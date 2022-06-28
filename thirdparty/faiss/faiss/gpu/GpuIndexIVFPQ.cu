@@ -42,6 +42,29 @@ GpuIndexIVFPQ::GpuIndexIVFPQ(
 
 GpuIndexIVFPQ::GpuIndexIVFPQ(
         GpuResourcesProvider* provider,
+        const faiss::IndexIVFPQ* index,
+        GpuIndexIVFPQConfig config,
+        bool needInit)
+        : GpuIndexIVF(
+                  provider,
+                  index->d,
+                  index->metric_type,
+                  index->metric_arg,
+                  index->nlist,
+                  config),
+          pq(index->pq),
+          ivfpqConfig_(config),
+          usePrecomputedTables_(config.usePrecomputedTables),
+          subQuantizers_(0),
+          bitsPerCode_(0),
+          reserveMemoryVecs_(0) {
+    if (needInit) {
+        copyFrom(index);
+    }
+}
+
+GpuIndexIVFPQ::GpuIndexIVFPQ(
+        GpuResourcesProvider* provider,
         int dims,
         int nlist,
         int subQuantizers,
@@ -109,11 +132,13 @@ void GpuIndexIVFPQ::copyFrom(const faiss::IndexIVFPQ* index) {
             (float*)index->pq.centroids.data(),
             ivfpqConfig_.indicesOptions,
             config_.memorySpace));
+    printf("index reset ok\n");
     // Doesn't make sense to reserve memory here
     index_->setPrecomputedCodes(usePrecomputedTables_);
 
     // Copy all of the IVF data
     index_->copyInvertedListsFrom(index->invlists);
+    printf("index prepare ok \n");
 }
 
 void GpuIndexIVFPQ::copyTo(faiss::IndexIVFPQ* index) const {
@@ -238,12 +263,14 @@ void GpuIndexIVFPQ::trainResidualQuantizer_(Index::idx_t n, const float* x) {
     }
 
     std::vector<Index::idx_t> assign(n);
+    //找到每个数据最近的粗聚类
     quantizer->assign(n, x, assign.data());
 
     std::vector<float> residuals(n * d);
 
     // FIXME jhj convert to _n version
     for (idx_t i = 0; i < n; i++) {
+        //计算残差，注意计算残差不用 L2 距离
         quantizer->compute_residual(x + i * d, &residuals[i * d], assign[i]);
     }
 
@@ -273,6 +300,7 @@ void GpuIndexIVFPQ::trainResidualQuantizer_(Index::idx_t n, const float* x) {
         pq.assign_index = nullptr;
     } else {
         // use the currently assigned clustering index
+        //需注意。不是每个粗聚类的残差单独训练。
         pq.train(n, residuals.data());
     }
 
@@ -451,12 +479,12 @@ void GpuIndexIVFPQ::verifySettings_() const {
             this->d);
 
     // The number of bytes per encoded vector must be one we support
-    FAISS_THROW_IF_NOT_FMT(
-            ivfpqConfig_.interleavedLayout ||
-                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
-            "Number of bytes per encoded vector / sub-quantizers (%d) "
-            "is not supported",
-            subQuantizers_);
+    //    FAISS_THROW_IF_NOT_FMT(
+    //            ivfpqConfig_.interleavedLayout ||
+    //                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
+    //            "Number of bytes per encoded vector / sub-quantizers (%d) "
+    //            "is not supported",
+    //            subQuantizers_);
 
     // We must have enough shared memory on the current device to store
     // our lookup distances
@@ -471,17 +499,17 @@ void GpuIndexIVFPQ::verifySettings_() const {
             lookupTableSize * subQuantizers_ * utils::pow2(bitsPerCode_);
     size_t smemPerBlock = getMaxSharedMemPerBlock(config_.device);
 
-    FAISS_THROW_IF_NOT_FMT(
-            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
-            "Device %d has %zu bytes of shared memory, while "
-            "%d bits per code and %d sub-quantizers requires %zu "
-            "bytes. Consider useFloat16LookupTables and/or "
-            "reduce parameters",
-            config_.device,
-            smemPerBlock,
-            bitsPerCode_,
-            subQuantizers_,
-            requiredSmemSize);
+    //    FAISS_THROW_IF_NOT_FMT(
+    //            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
+    //            "Device %d has %zu bytes of shared memory, while "
+    //            "%d bits per code and %d sub-quantizers requires %zu "
+    //            "bytes. Consider useFloat16LookupTables and/or "
+    //            "reduce parameters",
+    //            config_.device,
+    //            smemPerBlock,
+    //            bitsPerCode_,
+    //            subQuantizers_,
+    //            requiredSmemSize);
 }
 
 } // namespace gpu

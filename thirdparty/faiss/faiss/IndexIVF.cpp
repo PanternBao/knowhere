@@ -19,11 +19,12 @@
 #include <memory>
 
 #include <faiss/utils/hamming.h>
-#include <faiss/utils/utils.h>
 
 #include <faiss/IndexFlat.h>
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
+#include <faiss/utils/utils.h>
+#include "faiss/utils/AtomicDouble.h"
 
 namespace faiss {
 
@@ -95,6 +96,7 @@ void Level1Quantizer::train_q1(
             printf("Training level-1 quantizer on %zd vectors in %zdD\n", n, d);
 
         Clustering clus(d, nlist, cp);
+        clus.train_type = 1;
         quantizer->reset();
         if (clustering_index) {
             clus.train(n, x, *clustering_index);
@@ -117,6 +119,7 @@ void Level1Quantizer::train_q1(
                 (metric_type == METRIC_INNER_PRODUCT && cp.spherical));
 
         Clustering clus(d, nlist, cp);
+        clus.train_type = 1;
         if (!clustering_index) {
             IndexFlatL2 assigner(d);
             clus.train(n, x, assigner);
@@ -212,8 +215,11 @@ void IndexIVF::add_without_codes(idx_t n, const float* x) {
 }
 
 void IndexIVF::add_with_ids(idx_t n, const float* x, const idx_t* xids) {
+    StopWatch sw = StopWatch::start();
     std::unique_ptr<idx_t[]> coarse_idx(new idx_t[n]);
     quantizer->assign(n, x, coarse_idx.get());
+    sw.stop();
+    indexIVF_stats.add_assign_q1_time.add(sw);
     add_core(n, x, xids, coarse_idx.get());
 }
 
@@ -347,6 +353,13 @@ void IndexIVF::set_direct_map_type(DirectMap::Type type) {
     direct_map.set_type(type, invlists, ntotal);
 }
 
+void IndexIVF::set_thread(int threads) {
+    printf("default threads %d\n", omp_get_max_threads());
+    omp_set_num_threads(threads);
+    omp_set_dynamic(0);
+    printf("current threads %d\n", omp_get_max_threads());
+}
+
 /** It is a sad fact of software that a conceptually simple function like this
  * becomes very complex when you factor in several ways of parallelizing +
  * interrupt/error handling + collecting stats + min/max collection. The
@@ -377,7 +390,11 @@ void IndexIVF::search(
         quantizer->search(n, x, nprobe, coarse_dis.get(), idx.get());
 
         double t1 = getmillisecs();
+        indexIVF_stats.search_topw_time.addMilliSecond(t1 - t0);
+        //默认不用做什么
         invlists->prefetch_lists(idx.get(), n * nprobe);
+        double tx = getmillisecs();
+        indexIVF_stats.search_prefetch_lists_time.addMilliSecond(tx - t1);
 
         search_preassigned(
                 n,
@@ -548,9 +565,10 @@ void IndexIVF::search_preassigned(
             if (list_size == 0) {
                 return (size_t)0;
             }
-
+            StopWatch sw = StopWatch::start();
             scanner->set_list(key, coarse_dis_i);
-
+            sw.stop();
+            indexIVF_stats.search_term3_add_time.add(sw);
             nlistv++;
 
             try {
@@ -563,10 +581,11 @@ void IndexIVF::search_preassigned(
                     sids.reset(new InvertedLists::ScopedIds(invlists, key));
                     ids = sids->get();
                 }
-
+                sw.restart();
                 nheap += scanner->scan_codes(
                         list_size, scodes.get(), ids, simi, idxi, k, bitset);
-
+                sw.stop();
+                indexIVF_stats.search_lookup_time.add(sw);
             } catch (const std::exception& e) {
                 std::lock_guard<std::mutex> lock(exception_mutex);
                 exception_string =
@@ -588,13 +607,16 @@ void IndexIVF::search_preassigned(
                 if (interrupt) {
                     continue;
                 }
-
+                StopWatch sw = StopWatch::start();
                 // loop over queries
+                // 计算距离表
                 scanner->set_query(x + i * d);
                 float* simi = distances + i * k;
                 idx_t* idxi = labels + i * k;
 
                 init_result(simi, idxi);
+                sw.stop();
+                indexIVF_stats.search_term3_calculate_time.add(sw);
 
                 idx_t nscan = 0;
 
@@ -612,8 +634,13 @@ void IndexIVF::search_preassigned(
                     }
                 }
 
+                sw.restart();
+
                 ndis += nscan;
                 reorder_result(simi, idxi);
+                sw.stop();
+                indexIVF_stats.search_topk_time.add(sw);
+                sw.restart();
 
                 if (InterruptCallback::is_interrupted()) {
                     interrupt = true;
@@ -1049,9 +1076,10 @@ void IndexIVF::update_vectors(int n, const idx_t* new_ids, const float* x) {
 void IndexIVF::train(idx_t n, const float* x) {
     if (verbose)
         printf("Training level-1 quantizer\n");
-
+    StopWatch sw = StopWatch::start();
     train_q1(n, x, verbose, metric_type);
-
+    sw.stop();
+    indexIVF_stats.train_q1_time.add(sw);
     if (verbose)
         printf("Training IVF residual\n");
 

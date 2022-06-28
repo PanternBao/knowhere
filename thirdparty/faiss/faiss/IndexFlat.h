@@ -10,13 +10,15 @@
 #ifndef INDEX_FLAT_H
 #define INDEX_FLAT_H
 
+#include <functional>
 #include <vector>
 
 #include <faiss/IndexFlatCodes.h>
 #include <faiss/impl/AuxIndexStructures.h>
+#include <faiss/utils/StopWatch.h>
 
 namespace faiss {
-
+int test_search();
 /** Index that stores the full vectors and performs exhaustive search */
 struct IndexFlat : IndexFlatCodes {
     /// database vectors, size ntotal * d
@@ -82,6 +84,19 @@ struct IndexFlat : IndexFlatCodes {
     size_t cal_size() {
         return this->sa_code_size();
     }
+
+    void search2(
+            idx_t n,
+            const float* x,
+            idx_t k,
+            float* distances,
+            idx_t* labels) const;
+    StopWatch once_normal(int* o) const;
+    StopWatch once_fvec_madd(idx_t n, const float* x) const;
+    StopWatch once_simd(idx_t n, const float* x, float* x_norms) const;
+    void once_test(int loop_count, int thread, std::function<StopWatch()> func)
+    const;
+    StopWatch once_fvec_madd2(idx_t n, const float* x) const;
 };
 
 struct IndexFlatIP : IndexFlat {

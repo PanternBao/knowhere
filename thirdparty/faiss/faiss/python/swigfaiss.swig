@@ -64,18 +64,17 @@ typedef uint64_t size_t;
 
 #endif
 
-
+#include <faiss/Index2Layer.h>
+#include <faiss/IndexAdditiveQuantizer.h>
 #include <faiss/IndexFlat.h>
-#include <faiss/VectorTransform.h>
-#include <faiss/IndexPreTransform.h>
+#include <faiss/IndexIVF.h>
+#include <faiss/IndexIVFFlat.h>
+#include <faiss/IndexIVFPQ.h>
+#include <faiss/IndexIVFPQR.h>
 #include <faiss/IndexLSH.h>
 #include <faiss/IndexPQ.h>
-#include <faiss/IndexAdditiveQuantizer.h>
-#include <faiss/IndexIVF.h>
-#include <faiss/IndexIVFPQ.h>
-#include <faiss/Index2Layer.h>
-#include <faiss/IndexIVFPQR.h>
-#include <faiss/IndexIVFFlat.h>
+#include <faiss/IndexPreTransform.h>
+#include <faiss/VectorTransform.h>
 
 #include <faiss/IndexPQFastScan.h>
 #include <faiss/IndexIVFPQFastScan.h>

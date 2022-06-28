@@ -80,6 +80,7 @@ struct Clustering : ClusteringParameters {
     typedef Index::idx_t idx_t;
     size_t d; ///< dimension of the vectors
     size_t k; ///< nb of centroids
+    int train_type=0;
 
     /** centroids (k * d)
      * if centroids are set on input to train, they will be used as

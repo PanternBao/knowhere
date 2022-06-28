@@ -54,6 +54,7 @@ struct Index {
     using idx_t = int64_t; ///< all indices are this type
     using component_t = float;
     using distance_t = float;
+    int train_type = 0;
 
     int d;        ///< vector dimension
     idx_t ntotal; ///< total nb of indexed vectors

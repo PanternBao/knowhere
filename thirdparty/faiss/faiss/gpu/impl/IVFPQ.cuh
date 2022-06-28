@@ -10,7 +10,6 @@
 #include <faiss/Index.h>
 #include <faiss/MetricType.h>
 #include <faiss/gpu/impl/IVFBase.cuh>
-#include <faiss/gpu/utils/Float16.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -129,7 +128,7 @@ class IVFPQ : public IVFBase {
             Tensor<float, 2, true>& outDistances,
             Tensor<Index::idx_t, 2, true>& outIndices);
 
-   private:
+   protected:
     /// Number of sub-quantizers per vector
     const int numSubQuantizers_;
 
