@@ -4,6 +4,8 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
@@ -46,7 +48,7 @@ __global__ void pqScanInterleaved(
 
     int numWarps = blockDim.x / kWarpSize;
     // FIXME: some issue with getLaneId() and CUDA 10.1 and P4 GPUs?
-    int laneId = threadIdx.x % kWarpSize;
+    int laneId = threadIdx.x % kWarpSize; // warp里面的 id。很重要
     int warpId = threadIdx.x / kWarpSize;
 
     int numSubQuantizers = codeDistances.getSize(2);
@@ -65,18 +67,23 @@ __global__ void pqScanInterleaved(
     int numBlocks = utils::divUp(numVecs, 32);
 
     // Number of EncodeT words per each dimension of block of 32 vecs
-    constexpr int bytesPerVectorBlockDim = EncodeBits * 32 / 8;
+    constexpr int bytesPerVectorBlockDim = EncodeBits * 32 / 8; // 32
     constexpr int wordsPerVectorBlockDim =
-            bytesPerVectorBlockDim / sizeof(EncodeT);
+            bytesPerVectorBlockDim / sizeof(EncodeT); // 32
     int wordsPerVectorBlock = wordsPerVectorBlockDim * numSubQuantizers;
-
+    //粗聚类的数据按warp 进行拆分。
     for (int block = warpId; block < numBlocks; block += numWarps) {
+        //单次 warp 做的工作
         float dist = 0;
 
         // This is the vector a given lane/thread handles
         int vec = block * kWarpSize + laneId;
         bool valid = vec < numVecs;
 
+        /*
+         * block * wordsPerVectorBlock 为数据偏移量
+         * wordsPerVectorBlock为单次处理的数据量 ，等于 M*32*sizeof(T).
+         */
         EncodeT* data = vecsBase + block * wordsPerVectorBlock;
 
         for (int sq = 0; sq < numSubQuantizers; ++sq) {
@@ -84,7 +91,7 @@ __global__ void pqScanInterleaved(
                     WarpPackedBits<EncodeT, EncodeBits>::read(laneId, data);
             EncodeT code =
                     WarpPackedBits<EncodeT, EncodeBits>::postRead(laneId, enc);
-
+            // localCodeDistances 大小 M*K
             dist += valid ? ConvertTo<float>::to(localCodeDistances[sq][code])
                           : 0;
             data += wordsPerVectorBlockDim;
@@ -172,17 +179,18 @@ struct LoadCodeDistances {
 
 template <int NumSubQuantizers, typename LookupT, typename LookupVecT>
 __global__ void pqScanNoPrecomputedMultiPass(
+        long smem,
         Tensor<float, 2, true> queries,
         Tensor<float, 3, true> pqCentroids,
-        Tensor<int, 2, true> topQueryToCentroid,
-        Tensor<LookupT, 4, true> codeDistances,
-        void** listCodes,
-        int* listLengths,
-        Tensor<int, 2, true> prefixSumOffsets,
-        Tensor<float, 1, true> distance) {
+        Tensor<int, 2, true> topQueryToCentroid, // every listid
+        Tensor<LookupT, 4, true> codeDistances,  // k'*m 个 code distance
+        void** listCodes,                        // k'*m 个 code index
+        int* listLengths,                        //
+        Tensor<int, 2, true> prefixSumOffsets,   // output index
+        Tensor<float, 1, true> distance          // output data
+) {
     const auto codesPerSubQuantizer = pqCentroids.getSize(2);
 
-    // Where the pq code -> residual distance is stored
     extern __shared__ char smemCodeDistances[];
     LookupT* codeDist = (LookupT*)smemCodeDistances;
 
@@ -203,7 +211,7 @@ __global__ void pqScanNoPrecomputedMultiPass(
 
     uint8_t* codeList = (uint8_t*)listCodes[listId];
     int limit = listLengths[listId];
-
+    // NumSubQuantizers=PQ_M,kNumCode32=PQ_M/4
     constexpr int kNumCode32 =
             NumSubQuantizers <= 4 ? 1 : (NumSubQuantizers / 4);
     unsigned int code32[kNumCode32];
@@ -213,6 +221,11 @@ __global__ void pqScanNoPrecomputedMultiPass(
     if (threadIdx.x < limit) {
         LoadCode32<NumSubQuantizers>::load(code32, codeList, threadIdx.x);
     }
+    //    if (threadIdx.x ==1) {
+    //        printf("\nislocal %d,isConstant %d, __isGlobal %d \n
+    //        ",__isLocal(&code32), __isConstant(&code32)
+    //                ,__isGlobal(&code32));
+    //    }
 
     LoadCodeDistances<LookupT, LookupVecT>::load(
             codeDist,
@@ -224,9 +237,10 @@ __global__ void pqScanNoPrecomputedMultiPass(
 
     // Each thread handles one code element in the list, with a
     // block-wide stride
+    //粗聚类的数据按照 thread 进行拆分。
     for (int codeIndex = threadIdx.x; codeIndex < limit;
          codeIndex += blockDim.x) {
-        // Prefetch next codes
+        // Prefetch next codes，每个线程预加载的不同。
         if (codeIndex + blockDim.x < limit) {
             LoadCode32<NumSubQuantizers>::load(
                     nextCode32, codeList, codeIndex + blockDim.x);
@@ -235,6 +249,7 @@ __global__ void pqScanNoPrecomputedMultiPass(
         float dist = 0.0f;
 
 #pragma unroll
+        // kNumCode32=>128/4=32
         for (int word = 0; word < kNumCode32; ++word) {
             constexpr int kBytesPerCode32 =
                     NumSubQuantizers < 4 ? NumSubQuantizers : 4;
@@ -245,9 +260,12 @@ __global__ void pqScanNoPrecomputedMultiPass(
 
             } else {
 #pragma unroll
+                // kBytesPerCode32=>4
                 for (int byte = 0; byte < kBytesPerCode32; ++byte) {
+                    // code=[0~256]
                     auto code = getByte(code32[word], byte * 8, 8);
-
+                    // codesPerSubQuantizer=>pq_k=256
+                    // offset=[0~pq_m]*256
                     auto offset = codesPerSubQuantizer *
                             (word * kBytesPerCode32 + byte);
 
@@ -261,7 +279,7 @@ __global__ void pqScanNoPrecomputedMultiPass(
         // memory traffic. Those are recovered in the final selection step.
         distanceOut[codeIndex] = dist;
 
-        // Rotate buffers
+        // Rotate buffers,为了预读取设置的。
 #pragma unroll
         for (int word = 0; word < kNumCode32; ++word) {
             code32[word] = nextCode32[word];
@@ -298,7 +316,8 @@ void runMultiPassTile(
         faiss::MetricType metric,
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices,
-        cudaStream_t stream) {
+        cudaStream_t stream,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     // We only support two metrics at the moment
     FAISS_ASSERT(
             metric == MetricType::METRIC_INNER_PRODUCT ||
@@ -332,9 +351,12 @@ void runMultiPassTile(
             stream);
 
     if (interleavedCodeLayout) {
+        //        std::cout << "interleave"
+        //                  << "\n";
         // The vector interleaved layout implementation
         auto kThreadsPerBlock = 256;
 
+        // w * queryTileSize
         auto grid = dim3(coarseIndices.getSize(1), coarseIndices.getSize(0));
         auto block = dim3(kThreadsPerBlock);
 
@@ -405,14 +427,24 @@ void runMultiPassTile(
         auto smem = useFloat16Lookup ? sizeof(half) : sizeof(float);
 
         smem *= numSubQuantizers * numSubQuantizerCodes;
-        FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
+        // FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
 
 #define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                   \
     do {                                                                \
         auto codeDistancesT = codeDistances.toTensor<LOOKUP_T>();       \
                                                                         \
+        if (NUM_SUB_Q == 128) {                                         \
+            cudaFuncSetAttribute(                                       \
+                    pqScanNoPrecomputedMultiPass<                       \
+                            NUM_SUB_Q,                                  \
+                            LOOKUP_T,                                   \
+                            LOOKUP_VEC_T>,                              \
+                    cudaFuncAttributeMaxDynamicSharedMemorySize,        \
+                    64 * 1024);                                         \
+        }                                                               \
         pqScanNoPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
-                <<<grid, block, smem, stream>>>(                        \
+                <<<grid, block, smem, stream>>>(                           \
+                        smem,                                           \
                         queries,                                        \
                         pqCentroidsInnermostCode,                       \
                         coarseIndices,                                  \
@@ -481,6 +513,9 @@ void runMultiPassTile(
             case 96:
                 RUN_PQ(96);
                 break;
+            case 128:
+                RUN_PQ(128);
+                break;
             default:
                 FAISS_ASSERT(false);
                 break;
@@ -512,17 +547,18 @@ void runMultiPassTile(
     auto flatHeapIndices = heapIndices.downcastInner<2>();
 
     runPass2SelectLists(
-            flatHeapDistances,
-            flatHeapIndices,
-            listIndices,
-            indicesOptions,
-            prefixSumOffsets,
-            coarseIndices,
+            flatHeapDistances, // nq*pass2Chunks*k
+            flatHeapIndices,   // nq*pass2Chunks*k
+            listIndices,       // deviceListIndexPointers_
+            indicesOptions,    // cpu
+            prefixSumOffsets,  // distance的位置
+            coarseIndices,     // 粗聚类的的索引id, nq*w
             k,
-            !l2Distance, // L2 distance chooses smallest
-            outDistances,
-            outIndices,
-            stream);
+            !l2Distance,  // L2 distance chooses smallest
+            outDistances, // nq*k
+            outIndices,   // nq*k
+            stream,
+            outIndices2);
 }
 
 template <typename CentroidT>
@@ -550,7 +586,8 @@ void runPQScanMultiPassNoPrecomputed(
         Tensor<float, 2, true>& outDistances,
         // output
         Tensor<Index::idx_t, 2, true>& outIndices,
-        GpuResources* res) {
+        GpuResources* res,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     constexpr int kMinQueryTileSize = 8;
     constexpr int kMaxQueryTileSize = 128;
     constexpr int kThrustMemSize = 16384;
@@ -586,13 +623,13 @@ void runPQScanMultiPassNoPrecomputed(
              // residual distances
              nprobe * numSubQuantizers * numSubQuantizerCodes * sizeof(float) +
              sizeForFirstSelectPass);
-
+    //同时能执行的 query 数
     int queryTileSize = (int)(sizeAvailable / sizePerQuery);
 
     if (queryTileSize < kMinQueryTileSize) {
-        queryTileSize = kMinQueryTileSize;
+        queryTileSize = kMinQueryTileSize; // 8
     } else if (queryTileSize > kMaxQueryTileSize) {
-        queryTileSize = kMaxQueryTileSize;
+        queryTileSize = kMaxQueryTileSize; // 128
     }
 
     // FIXME: we should adjust queryTileSize to deal with this, since
@@ -691,6 +728,8 @@ void runPQScanMultiPassNoPrecomputed(
     int curStream = 0;
 
     for (int query = 0; query < queries.getSize(0); query += queryTileSize) {
+        // std::cout << "step-6-0:" << queryTileSize << "\n";
+
         int numQueriesInTile =
                 std::min(queryTileSize, queries.getSize(0) - query);
 
@@ -715,6 +754,8 @@ void runPQScanMultiPassNoPrecomputed(
                 outDistances.narrowOutermost(query, numQueriesInTile);
         auto outIndicesView =
                 outIndices.narrowOutermost(query, numQueriesInTile);
+        auto outIndicesView2 =
+                outIndices2.narrowOutermost(query, numQueriesInTile);
 
         runMultiPassTile(
                 res,
@@ -744,7 +785,8 @@ void runPQScanMultiPassNoPrecomputed(
                 metric,
                 outDistanceView,
                 outIndicesView,
-                streams[curStream]);
+                streams[curStream],
+                outIndicesView2);
 
         curStream = (curStream + 1) % 2;
     }

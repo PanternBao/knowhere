@@ -216,8 +216,7 @@ set(FAISS_HEADERS
 # Export FAISS_HEADERS variable to parent scope.
 set(FAISS_HEADERS ${FAISS_HEADERS} PARENT_SCOPE)
 
-add_library(faiss ${FAISS_SRC})
-#add_library(faiss_avx2 ${FAISS_SRC})
+add_library(faiss ${FAISS_SRC} utils/AtomicDouble.cpp utils/AtomicDouble.h utils/StopWatch.cpp utils/StopWatch.h)
 
 #if(NOT FAISS_OPT_LEVEL STREQUAL "avx2")
 #  set_target_properties(faiss_avx2 PROPERTIES EXCLUDE_FROM_ALL TRUE)

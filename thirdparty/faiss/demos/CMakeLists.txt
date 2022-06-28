@@ -21,3 +21,18 @@ target_link_libraries(demo_sift1M PRIVATE faiss)
 
 add_executable(demo_weighted_kmeans EXCLUDE_FROM_ALL demo_weighted_kmeans.cpp)
 target_link_libraries(demo_weighted_kmeans PRIVATE faiss)
+
+
+
+add_executable(IVFPQ EXCLUDE_FROM_ALL TestIVFPQ.cpp)
+target_link_libraries(IVFPQ PRIVATE faiss)
+
+
+add_executable(IVFPQR EXCLUDE_FROM_ALL TestIVFPQR.cpp)
+target_link_libraries(IVFPQR PRIVATE faiss)
+add_executable(GPUIVFPQ EXCLUDE_FROM_ALL TestGPUIVFPQ.cpp)
+target_link_libraries(GPUIVFPQ PRIVATE faiss)
+
+
+add_executable(GPUIVFPQR EXCLUDE_FROM_ALL TestGPUIVFPQR.cpp)
+target_link_libraries(GPUIVFPQR PRIVATE faiss)

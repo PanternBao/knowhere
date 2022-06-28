@@ -130,7 +130,8 @@ void runPass2SelectLists(
         bool chooseLargest,
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices,
-        cudaStream_t stream);
+        cudaStream_t stream,
+        Tensor<Index::idx_t, 2, true>& outIndices2);
 
 } // namespace gpu
 } // namespace faiss

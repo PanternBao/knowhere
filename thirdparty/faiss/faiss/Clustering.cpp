@@ -25,6 +25,7 @@
 #include <faiss/utils/distances.h>
 #include <faiss/utils/random.h>
 #include <faiss/utils/utils.h>
+#include <faiss/IndexIVF.h>
 
 namespace faiss {
 
@@ -413,7 +414,7 @@ void Clustering::train_encoded(
             int(d));
 
     double t0 = getmillisecs();
-
+    StopWatch sw = StopWatch::start();
     if (!codec) {
         // Check for NaNs in input data. Normally it is the user's
         // responsibility, but it may spare us some hard-to-debug
@@ -424,17 +425,33 @@ void Clustering::train_encoded(
                     std::isfinite(x[i]), "input contains NaN's or Inf's");
         }
     }
+    sw.stop();
+    if (train_type == 1){
+        indexIVF_stats.train_q1_preprocess1_time.add(sw); // todo traintype
+    }
+
 
     const uint8_t* x = x_in;
     std::unique_ptr<uint8_t[]> del1;
     std::unique_ptr<float[]> del3;
     size_t line_size = codec ? codec->sa_code_size() : sizeof(float) * d;
-
+    //取子集
     if (nx > k * max_points_per_centroid) {
         uint8_t* x_new;
         float* weights_new;
+        StopWatch sw2 = StopWatch::start();
         nx = subsample_training_set(
                 *this, nx, x, line_size, weights, &x_new, &weights_new);
+        if (train_type == 1) {
+            sw2.stop();
+            //printf("train q1 subsample time %f\n",sw2.getElapsedTime());;
+            indexIVF_stats.train_q1_time.sub(sw2);
+        } else if (train_type == 2) {
+
+            sw2.stop();
+            //printf("train q2 subsample time %f\n",sw2.getElapsedTime());;
+            indexIVF_stats.train_q2_time.sub(sw2);
+        }
         del1.reset(x_new);
         x = x_new;
         del3.reset(weights_new);
@@ -448,7 +465,8 @@ void Clustering::train_encoded(
                 k,
                 idx_t(k) * min_points_per_centroid);
     }
-
+    sw.restart();
+    //训练集和 k 一样大的情况，基本不可能
     if (nx == k) {
         // this is a corner case, just copy training set to clusters
         if (verbose) {
@@ -472,7 +490,11 @@ void Clustering::train_encoded(
         index.add(k, centroids.data());
         return;
     }
-
+    sw.stop();
+    if (train_type == 1) {
+        indexIVF_stats.train_q1_preprocess2_time.add(sw); // todo traintype
+    }
+    sw.restart();
     if (verbose) {
         printf("Clustering %" PRId64
                " points in %zdD to %zd clusters, "
@@ -515,6 +537,12 @@ void Clustering::train_encoded(
     if (verbose) {
         printf("  Preprocessing in %.2f s\n", (getmillisecs() - t0) / 1000.);
     }
+    if (train_type == 1) {
+        sw.stop();
+        indexIVF_stats.train_q1_preprocess4_time.add(sw); // todo traintype
+    } else if (train_type == 2) {
+    }
+
     t0 = getmillisecs();
 
     // temporary buffer to decode vectors during the optimization
@@ -538,8 +566,14 @@ void Clustering::train_encoded(
             } else {
                 FAISS_THROW_FMT ("Clustering Type is knonws: %d", (int)clustering_type);
             }
-
+            StopWatch sw = StopWatch::start();
             centroids.resize(d * k);
+            sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_preprocess2_time.add(sw);
+            } else if (train_type == 2) {
+            }
+            sw.restart();
             if (!codec) {
                 for (int i = n_input_centroids; i < k; i++) {
                     memcpy(&centroids[i * d], x + centroids_index[i] * line_size, line_size);
@@ -550,7 +584,7 @@ void Clustering::train_encoded(
                 }
             }
         }
-
+        //默认什么也不做
         post_process_centroids();
 
         // prepare the index
@@ -562,17 +596,27 @@ void Clustering::train_encoded(
         if (!index.is_trained) {
             index.train(k, centroids.data());
         }
-
+        sw.stop();
+        if (train_type == 1) {
+            indexIVF_stats.train_q1_preprocess4_time.add(sw);
+        } else if (train_type == 2) {
+        }
+        sw.restart();
         index.add(k, centroids.data());
-
+        sw.stop();
+        if (train_type == 1) {
+            indexIVF_stats.train_q1_preprocess5_time.add(sw);
+        } else if (train_type == 2) {
+        }
         // k-means iterations
 
         float obj = 0;
         float prev_objective = 0;
         for (int i = 0; i < niter; i++) {
             double t0s = getmillisecs();
-
+            sw.restart();
             if (!codec) {
+                index.train_type = train_type;
                 index.assign(nx, reinterpret_cast<const float *>(x),
                              assign.get(), dis.get());
             } else {
@@ -596,6 +640,12 @@ void Clustering::train_encoded(
 
             InterruptCallback::check();
             t_search_tot += getmillisecs() - t0s;
+            sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_find_nearst_time.add(sw);
+            } else if (train_type == 2) {
+            }
+            sw.restart();
 
             // accumulate objective
             obj = 0;
@@ -607,6 +657,7 @@ void Clustering::train_encoded(
             std::vector<float> hassign(k);
 
             size_t k_frozen = frozen_centroids ? n_input_centroids : 0;
+            //并行，分别计算每个 k 的新中心点
             compute_centroids(
                     d,
                     k,
@@ -618,10 +669,22 @@ void Clustering::train_encoded(
                     weights,
                     hassign.data(),
                     centroids.data());
-
+            sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_compute_centroids_time.add(sw);
+            } else if (train_type == 2) {
+            }
+            sw.restart();
+            //有些中心很偏，没有其他数据和他最近，此时重新分割
             int nsplit = split_clusters(
                     d, k, nx, k_frozen, hassign.data(), centroids.data());
 
+            sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_split_cluster_time.add(sw);
+            } else if (train_type == 2) {
+            }
+            sw.restart();
             // collect statistics
             ClusteringIterationStats stats = {
                     obj,
@@ -642,7 +705,7 @@ void Clustering::train_encoded(
                        nsplit);
                 fflush(stdout);
             }
-
+            //默认啥也不做
             post_process_centroids();
 
             // add centroids to index for the next iteration (or for output)
@@ -663,6 +726,11 @@ void Clustering::train_encoded(
             }
 
             InterruptCallback::check();
+            sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_post_process_time.add(sw);
+            } else if (train_type == 2) {
+            }
         }
 
         if (verbose)

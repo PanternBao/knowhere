@@ -39,7 +39,7 @@ void IndexFlat::search(
         knn_inner_product(x, get_xb(), d, n, ntotal, &res, bitset);
     } else if (metric_type == METRIC_L2) {
         float_maxheap_array_t res = {size_t(n), size_t(k), labels, distances};
-        knn_L2sqr(x, get_xb(), d, n, ntotal, &res, nullptr, bitset);
+        knn_L2sqr(x, get_xb(), d, n, ntotal, &res, nullptr, bitset, train_type == 1);
     } else if (metric_type == METRIC_Jaccard) {
         float_maxheap_array_t res = {size_t(n), size_t(k), labels, distances};
         knn_jaccard(x, get_xb(), d, n, ntotal, &res, bitset);

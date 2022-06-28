@@ -64,7 +64,7 @@ void IVFBase::reserveMemory(size_t numVecs) {
     }
 
     if ((indicesOptions_ == INDICES_32_BIT) ||
-        (indicesOptions_ == INDICES_64_BIT)) {
+        (indicesOptions_ == INDICES_64_BIT)||(indicesOptions_ == INDICES_GPU_ALL)) {
         // Reserve for index lists as well
         size_t bytesPerIndexList = vecsPerList *
                 (indicesOptions_ == INDICES_32_BIT ? sizeof(int)
@@ -255,7 +255,7 @@ std::vector<Index::idx_t> IVFBase::getListIndices(int listId) const {
         }
 
         return out;
-    } else if (indicesOptions_ == INDICES_64_BIT) {
+    } else if ((indicesOptions_ == INDICES_64_BIT)||(indicesOptions_ == INDICES_GPU_ALL)) {
         // The data is stored as int64 on the GPU
         FAISS_ASSERT(listId < deviceListIndices_.size());
 
@@ -538,7 +538,7 @@ void IVFBase::addIndicesFromCpu_(
                 stream,
                 true /* exact reserved size */);
 
-    } else if (indicesOptions_ == INDICES_64_BIT) {
+    } else if ((indicesOptions_ == INDICES_64_BIT)||(indicesOptions_ == INDICES_GPU_ALL)) {
         listIndices->data.append(
                 (uint8_t*)indices,
                 numVecs * sizeof(Index::idx_t),
@@ -704,7 +704,7 @@ int IVFBase::addVectors(
 
             auto& indices = deviceListIndices_[listId];
             if ((indicesOptions_ == INDICES_32_BIT) ||
-                (indicesOptions_ == INDICES_64_BIT)) {
+                (indicesOptions_ == INDICES_64_BIT)||(indicesOptions_ == INDICES_GPU_ALL)) {
                 size_t indexSize = (indicesOptions_ == INDICES_32_BIT)
                         ? sizeof(int)
                         : sizeof(Index::idx_t);

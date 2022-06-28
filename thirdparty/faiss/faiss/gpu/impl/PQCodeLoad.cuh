@@ -335,7 +335,59 @@ struct LoadCode32<64> {
             : "l"(p));
     }
 };
-
+template<>
+struct LoadCode32<128> {
+    static inline __device__ void load(
+            unsigned int code32[32],
+            uint8_t* p,
+            int offset) {
+        p += offset * 128;
+        // FIXME: this is a non-coalesced load
+        // unfortunately need to reorganize memory layout by warp
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4];"
+        : "=r"(code32[0]), "=r"(code32[1]), "=r"(code32[2]), "=r"(code32[3])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 16];"
+        : "=r"(code32[4]), "=r"(code32[5]), "=r"(code32[6]), "=r"(code32[7])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 32];"
+        : "=r"(code32[8]),
+        "=r"(code32[9]),
+        "=r"(code32[10]),
+        "=r"(code32[11])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 48];"
+        : "=r"(code32[12]),
+        "=r"(code32[13]),
+        "=r"(code32[14]),
+        "=r"(code32[15])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 64];"
+        : "=r"(code32[16]),
+        "=r"(code32[17]),
+        "=r"(code32[18]),
+        "=r"(code32[19])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 80];"
+        : "=r"(code32[20]),
+        "=r"(code32[21]),
+        "=r"(code32[22]),
+        "=r"(code32[23])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 96];"
+        : "=r"(code32[24]),
+        "=r"(code32[25]),
+        "=r"(code32[26]),
+        "=r"(code32[27])
+        : "l"(p));
+        asm(LD_NC_V4 " {%0, %1, %2, %3}, [%4 + 112];"
+        : "=r"(code32[28]),
+        "=r"(code32[29]),
+        "=r"(code32[30]),
+        "=r"(code32[31])
+        : "l"(p));
+    }
+};
 template <>
 struct LoadCode32<96> {
     static inline __device__ void load(
