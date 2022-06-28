@@ -552,6 +552,7 @@ void knn_L2sqr(
         float_maxheap_array_t* ha,
         const float* y_norm2,
         const BitsetView bitset) {
+    //用于获取前 topK个值，使用堆
     if (ha->k < distance_compute_min_k_reservoir) {
         HeapResultHandler<CMax<float, int64_t>> res(
                 ha->nh, ha->val, ha->ids, ha->k);

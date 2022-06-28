@@ -19,11 +19,12 @@
 #include <memory>
 
 #include <faiss/utils/hamming.h>
-#include <faiss/utils/utils.h>
 
 #include <faiss/IndexFlat.h>
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
+#include <faiss/utils/utils.h>
+#include "faiss/utils/AtomicDouble.h"
 
 namespace faiss {
 
@@ -212,8 +213,11 @@ void IndexIVF::add_without_codes(idx_t n, const float* x) {
 }
 
 void IndexIVF::add_with_ids(idx_t n, const float* x, const idx_t* xids) {
+    StopWatch sw = StopWatch::start();
     std::unique_ptr<idx_t[]> coarse_idx(new idx_t[n]);
     quantizer->assign(n, x, coarse_idx.get());
+    sw.stop();
+    indexIVF_stats.add_assign_q1_time.add(sw);
     add_core(n, x, xids, coarse_idx.get());
 }
 
@@ -377,7 +381,11 @@ void IndexIVF::search(
         quantizer->search(n, x, nprobe, coarse_dis.get(), idx.get());
 
         double t1 = getmillisecs();
+        indexIVF_stats.search_topw_time.add(t1 - t0);
+        //默认不用做什么
         invlists->prefetch_lists(idx.get(), n * nprobe);
+        double tx = getmillisecs();
+        indexIVF_stats.search_prefetch_lists_time.add(tx - t1);
 
         search_preassigned(
                 n,
@@ -588,13 +596,16 @@ void IndexIVF::search_preassigned(
                 if (interrupt) {
                     continue;
                 }
-
+                StopWatch sw = StopWatch::start();
                 // loop over queries
                 scanner->set_query(x + i * d);
                 float* simi = distances + i * k;
                 idx_t* idxi = labels + i * k;
 
                 init_result(simi, idxi);
+                sw.stop();
+                indexIVF_stats.search_q2_init_time.add(sw);
+                sw.restart();
 
                 idx_t nscan = 0;
 
@@ -611,9 +622,15 @@ void IndexIVF::search_preassigned(
                         break;
                     }
                 }
+                sw.stop();
+                indexIVF_stats.search_scan_code_time.add(sw);
+                sw.restart();
 
                 ndis += nscan;
                 reorder_result(simi, idxi);
+                sw.stop();
+                indexIVF_stats.search_topk_time.add(sw);
+                sw.restart();
 
                 if (InterruptCallback::is_interrupted()) {
                     interrupt = true;
@@ -1049,9 +1066,10 @@ void IndexIVF::update_vectors(int n, const idx_t* new_ids, const float* x) {
 void IndexIVF::train(idx_t n, const float* x) {
     if (verbose)
         printf("Training level-1 quantizer\n");
-
+    StopWatch sw = StopWatch::start();
     train_q1(n, x, verbose, metric_type);
-
+    sw.stop();
+    indexIVF_stats.train_q1_time.add(sw);
     if (verbose)
         printf("Training IVF residual\n");
 

@@ -533,6 +533,7 @@ void IVFPQ::query(
     FAISS_ASSERT(outIndices.getSize(0) == queries.getSize(0));
 
     // Reserve space for the closest coarse centroids
+    //2 代表二维数组，分配大小queries.getSize(0) * nprobe。 具体见Tensor-inl.cuh和DeviceTensor-inl.cuh， 分配位置见AllocType
     DeviceTensor<float, 2, true> coarseDistances(
             resources_,
             makeTempAlloc(AllocType::Other, stream),

@@ -21,6 +21,7 @@
 #include <faiss/invlists/InvertedLists.h>
 #include <faiss/utils/Heap.h>
 #include <knowhere/utils/BitsetView.h>
+#include <faiss/utils/AtomicDouble.h>
 
 namespace faiss {
 
@@ -106,20 +107,6 @@ struct IndexIVF : Index, Level1Quantizer {
     size_t nprobe;    ///< number of probes at query time
     size_t max_codes; ///< max nb of codes to visit to do a query
 
-    /** Used for index IVF_NM currently to reduce index size
-     *
-     * arranged_codes: vector raw data re-ordered by invlists:
-     *   [0,     n0-1]       vector data for invlists[0]
-     *   [n0,    n0+n1-1]    vector data for invlists[1]
-     *   [n0+n1, n0+n1+n2-1] vector data for invlists[2]
-     *   ... ...
-     *
-     * prefix_sum: the start offset of invlists in arranged_codes:
-     *   {0, n0, n0+n1, n0+n1+n2, ...}
-     */
-    std::vector<uint8_t> arranged_codes;
-    std::vector<size_t> prefix_sum;
-
     /** Parallel mode determines how queries are parallelized with OpenMP
      *
      * 0 (default): split over queries
@@ -156,14 +143,8 @@ struct IndexIVF : Index, Level1Quantizer {
     /// Calls add_with_ids with NULL ids
     void add(idx_t n, const float* x) override;
 
-    /// Calls add_with_ids_without_codes
-    void add_without_codes(idx_t n, const float* x) override;
-
     /// default implementation that calls encode_vectors
     void add_with_ids(idx_t n, const float* x, const idx_t* xids) override;
-
-    /// Implementation for adding without original vector data
-    void add_with_ids_without_codes(idx_t n, const float* x, const idx_t* xids) override;
 
     /** Implementation of vector addition where the vector assignments are
      * predefined. The default implementation hands over the code extraction to
@@ -234,22 +215,7 @@ struct IndexIVF : Index, Level1Quantizer {
             idx_t* labels,
             bool store_pairs,
             const IVFSearchParameters* params = nullptr,
-            IndexIVFStats* stats = nullptr,
-            const BitsetView bitset = nullptr) const;
-
-    /** Similar to search_preassigned, but does not store codes **/
-    virtual void search_preassigned_without_codes(
-            idx_t n,
-            const float* x,
-            idx_t k,
-            const idx_t* assign,
-            const float* centroid_dis,
-            float* distances,
-            idx_t* labels,
-            bool store_pairs,
-            const IVFSearchParameters* params = nullptr,
-            IndexIVFStats* stats = nullptr,
-            const BitsetView bitset = nullptr) const;
+            IndexIVFStats* stats = nullptr) const;
 
     /** assign the vectors, then call search_preassign */
     void search(
@@ -257,58 +223,13 @@ struct IndexIVF : Index, Level1Quantizer {
             const float* x,
             idx_t k,
             float* distances,
-            idx_t* labels,
-            const BitsetView bitset = nullptr) const override;
-
-    void search_thread_safe(
-            idx_t n,
-            const float* x,
-            idx_t k,
-            float* distances,
-            idx_t* labels,
-            const size_t nprobe,
-            const int parallel_mode,
-            const size_t max_codes,
-            const BitsetView bitset = nullptr) const;
-
-    /** Similar to search, but does not store codes **/
-    void search_without_codes_thread_safe(
-            idx_t n,
-            const float* x,
-            idx_t k,
-            float* distances,
-            idx_t* labels,
-            const size_t nprobe,
-            const int parallel_mode,
-            const size_t max_codes,
-            const BitsetView bitset = nullptr) const;
+            idx_t* labels) const override;
 
     void range_search(
             idx_t n,
             const float* x,
             float radius,
-            RangeSearchResult* result,
-            const BitsetView bitset = nullptr) const override;
-
-    void range_search_thread_safe(
-            idx_t n,
-            const float* x,
-            float radius,
-            RangeSearchResult* result,
-            const size_t nprobe,
-            const int parallel_mode,
-            const size_t max_codes,
-            const BitsetView bitset = nullptr) const;
-
-    void range_search_without_codes_thread_safe(
-            idx_t n,
-            const float* x,
-            float radius,
-            RangeSearchResult* result,
-            const size_t nprobe,
-            const int parallel_mode,
-            const size_t max_codes,
-            const BitsetView bitset = nullptr) const;
+            RangeSearchResult* result) const override;
 
     void range_search_preassigned(
             idx_t nx,
@@ -319,20 +240,7 @@ struct IndexIVF : Index, Level1Quantizer {
             RangeSearchResult* result,
             bool store_pairs = false,
             const IVFSearchParameters* params = nullptr,
-            IndexIVFStats* stats = nullptr,
-            const BitsetView bitset = nullptr) const;
-
-    void range_search_preassigned_without_codes(
-            idx_t nx,
-            const float* x,
-            float radius,
-            const idx_t* keys,
-            const float* coarse_dis,
-            RangeSearchResult* result,
-            bool store_pairs = false,
-            const IVFSearchParameters* params = nullptr,
-            IndexIVFStats* stats = nullptr,
-            const BitsetView bitset = nullptr) const;
+            IndexIVFStats* stats = nullptr) const;
 
     /** Get a scanner for this index (store_pairs means ignore labels)
      *
@@ -344,8 +252,6 @@ struct IndexIVF : Index, Level1Quantizer {
     /** reconstruct a vector. Works only if maintain_direct_map is set to 1 or 2
      */
     void reconstruct(idx_t key, float* recons) const override;
-
-    void reconstruct_without_codes(idx_t key, float* recons) const override;
 
     /** Update a subset of vectors.
      *
@@ -397,11 +303,6 @@ struct IndexIVF : Index, Level1Quantizer {
             int64_t offset,
             float* recons) const;
 
-    virtual void reconstruct_from_offset_without_codes(
-            int64_t list_no,
-            int64_t offset,
-            float* recons) const;
-
     /// Dataset manipulation functions
 
     size_t remove_ids(const IDSelector& sel) override;
@@ -429,16 +330,6 @@ struct IndexIVF : Index, Level1Quantizer {
             idx_t a1,
             idx_t a2) const;
 
-    virtual void to_readonly();
-
-    virtual void to_readonly_without_codes();
-
-    virtual bool is_readonly() const;
-
-    virtual void backup_quantizer();
-
-    virtual void restore_quantizer();
-
     ~IndexIVF() override;
 
     size_t get_list_size(size_t list_no) const {
@@ -461,8 +352,6 @@ struct IndexIVF : Index, Level1Quantizer {
     size_t sa_code_size() const override;
 
     void sa_encode(idx_t n, const float* x, uint8_t* bytes) const override;
-
-    void dump();
 
     IndexIVF();
 };
@@ -536,11 +425,62 @@ struct IndexIVFStats {
     size_t nheap_updates;     // nb of times the heap was updated
     double quantization_time; // time spent quantizing vectors (in ms)
     double search_time;       // time spent searching lists (in ms)
-
+    AtomicDouble train_q1_time;
+    AtomicDouble train_q2_sub_time;
+    AtomicDouble train_q2_residuals_time;
+    AtomicDouble train_q2_time;
+    AtomicDouble train_precomputed_time;
+    AtomicDouble add_assign_q1_time;
+    AtomicDouble add_compute_code_time;
+    AtomicDouble add_insert_ivf_time;
+    AtomicDouble search_topw_time;
+    AtomicDouble search_prefetch_lists_time;
+    AtomicDouble search_q2_init_time;
+    AtomicDouble search_scan_code_time;
+    AtomicDouble search_topk_time;
     IndexIVFStats() {
         reset();
     }
     void reset();
+    double getTrainQ1Time() {
+        return train_q1_time.getValue();
+    }
+    double getTrainQ2SubTime() {
+        return train_q2_sub_time.getValue();
+    }
+    double getTrainQ2ResidualsTime() {
+        return train_q2_residuals_time.getValue();
+    }
+    double getTrainQ2Time() {
+        return train_q2_time.getValue();
+    }
+    double getTrainPrecomputedTime() {
+        return train_precomputed_time.getValue();
+    }
+    double getAddAssignQ1Time() {
+        return add_assign_q1_time.getValue();
+    }
+    double getAddComputeCodeTime() {
+        return add_compute_code_time.getValue();
+    }
+    double getAddInsertIvfTime() {
+        return add_insert_ivf_time.getValue();
+    }
+    double getSearchTopwTime() {
+        return search_topw_time.getValue();
+    }
+    double getSearchPrefetchListsTime() {
+        return search_prefetch_lists_time.getValue();
+    }
+    double getSearchQ2InitTime() {
+        return search_q2_init_time.getValue();
+    }
+    double getSearchScanCodeTime() {
+        return search_scan_code_time.getValue();
+    }
+    double getSearchTopkTime() {
+        return search_topk_time.getValue();
+    }
     void add(const IndexIVFStats& other);
 };
 

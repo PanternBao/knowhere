@@ -238,12 +238,14 @@ void GpuIndexIVFPQ::trainResidualQuantizer_(Index::idx_t n, const float* x) {
     }
 
     std::vector<Index::idx_t> assign(n);
+    //找到每个数据最近的粗聚类
     quantizer->assign(n, x, assign.data());
 
     std::vector<float> residuals(n * d);
 
     // FIXME jhj convert to _n version
     for (idx_t i = 0; i < n; i++) {
+        //计算残差，注意计算残差不用 L2 距离
         quantizer->compute_residual(x + i * d, &residuals[i * d], assign[i]);
     }
 
@@ -273,6 +275,7 @@ void GpuIndexIVFPQ::trainResidualQuantizer_(Index::idx_t n, const float* x) {
         pq.assign_index = nullptr;
     } else {
         // use the currently assigned clustering index
+        //需注意。不是每个粗聚类的残差单独训练。
         pq.train(n, residuals.data());
     }
 

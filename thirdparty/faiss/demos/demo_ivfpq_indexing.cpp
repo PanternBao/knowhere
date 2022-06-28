@@ -14,6 +14,8 @@
 
 #include <faiss/IndexFlat.h>
 #include <faiss/IndexIVFPQ.h>
+#include <faiss/gpu/StandardGpuResources.h>
+#include <faiss/gpu/GpuIndexIVFPQ.h>
 #include <faiss/index_io.h>
 
 double elapsed() {
@@ -44,7 +46,15 @@ int main() {
     // the coarse quantizer should not be dealloced before the index
     // 4 = nb of bytes per code (d must be a multiple of this)
     // 8 = nb of bits per sub-code (almost always 8)
-    faiss::IndexIVFPQ index(&coarse_quantizer, d, ncentroids, 4, 8);
+    printf("read 1");
+    faiss::gpu::StandardGpuResources res;
+
+    const faiss::IndexIVFPQ & ivfpq =
+            faiss::IndexIVFPQ(&coarse_quantizer, d, 8192, 4, 8);
+    faiss::gpu::GpuIndexIVFPQConfig config = faiss::gpu::GpuIndexIVFPQConfig();
+    faiss::gpu::GpuIndexIVFPQ index(&res, &ivfpq,config);
+    index.nprobe=4096;
+    printf("read 2");
 
     std::mt19937 rng;
 
@@ -66,14 +76,14 @@ int main() {
         index.train(nt, trainvecs.data());
     }
 
-    { // I/O demo
-        const char* outfilename = "/tmp/index_trained.faissindex";
-        printf("[%.3f s] storing the pre-trained index to %s\n",
-               elapsed() - t0,
-               outfilename);
-
-        write_index(&index, outfilename);
-    }
+//    { // I/O demo
+//        const char* outfilename = "/tmp/index_trained.faissindex";
+//        printf("[%.3f s] storing the pre-trained index to %s\n",
+//               elapsed() - t0,
+//               outfilename);
+//
+//        write_index(&index, outfilename);
+//    }
 
     size_t nq;
     std::vector<float> queries;
@@ -93,9 +103,9 @@ int main() {
 
         index.add(nb, database.data());
 
-        printf("[%.3f s] imbalance factor: %g\n",
-               elapsed() - t0,
-               index.invlists->imbalance_factor());
+//        printf("[%.3f s] imbalance factor: %g\n",
+//               elapsed() - t0,
+//               index.invlists->imbalance_factor());
 
         // remember a few elements from the database as queries
         int i0 = 1234;

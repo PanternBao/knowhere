@@ -67,7 +67,7 @@ void IndexIVFPQ::train_residual(idx_t n, const float* x) {
 
 void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
     const float* x_in = x;
-
+    StopWatch sw = StopWatch::start();
     x = fvecs_maybe_subsample(
             d,
             (size_t*)&n,
@@ -75,7 +75,10 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
             x,
             verbose,
             pq.cp.seed);
+    sw.stop();
+    indexIVF_stats.train_q2_sub_time.add(sw);
 
+    sw.restart();
     ScopeDeleter<float> del_x(x_in == x ? nullptr : x);
 
     const float* trainset;
@@ -96,6 +99,9 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
     } else {
         trainset = x;
     }
+    sw.stop();
+    indexIVF_stats.train_q2_residuals_time.add(sw);
+    sw.restart();
     if (verbose)
         printf("training %zdx%zd product quantizer on %" PRId64
                " vectors in %dD\n",
@@ -105,6 +111,9 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
                d);
     pq.verbose = verbose;
     pq.train(n, trainset);
+    sw.stop();
+    indexIVF_stats.train_q2_time.add(sw);
+
 
     if (do_polysemous_training) {
         if (verbose)
@@ -130,10 +139,12 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
                 res[j] = xx[j] - res[j];
         }
     }
-
+    sw.restart();
     if (by_residual) {
         precompute_table();
     }
+    sw.stop();
+    indexIVF_stats.train_precomputed_time.add(sw);
 }
 
 /****************************************************************
@@ -263,6 +274,7 @@ void IndexIVFPQ::add_core_o(
         const idx_t* precomputed_idx) {
     idx_t bs = 32768;
     if (n > bs) {
+        //分块递归调用本方法
         for (idx_t i0 = 0; i0 < n; i0 += bs) {
             idx_t i1 = std::min(i0 + bs, n);
             if (verbose) {
@@ -294,6 +306,7 @@ void IndexIVFPQ::add_core_o(
     if (precomputed_idx) {
         idx = precomputed_idx;
     } else {
+        //找到最近的粗集群,idx是对应粗集群的index(id)
         idx_t* idx0 = new idx_t[n];
         del_idx.set(idx0);
         quantizer->assign(n, x, idx0);
@@ -301,6 +314,7 @@ void IndexIVFPQ::add_core_o(
     }
 
     double t1 = getmillisecs();
+    indexIVF_stats.add_assign_q1_time.add(t1-t0);
     uint8_t* xcodes = new uint8_t[n * code_size];
     ScopeDeleter<uint8_t> del_xcodes(xcodes);
 
@@ -308,14 +322,17 @@ void IndexIVFPQ::add_core_o(
     ScopeDeleter<float> del_to_encode;
 
     if (by_residual) {
+        //计算 x 和粗节点（idx）的残差。
         to_encode = compute_residuals(quantizer, n, x, idx);
         del_to_encode.set(to_encode);
     } else {
         to_encode = x;
     }
+    //编码
     pq.compute_codes(to_encode, xcodes, n);
 
     double t2 = getmillisecs();
+    indexIVF_stats.add_compute_code_time.add(t2-t1);
     // TODO: parallelize?
     size_t n_ignore = 0;
     for (size_t i = 0; i < n; i++) {
@@ -330,6 +347,7 @@ void IndexIVFPQ::add_core_o(
         }
 
         uint8_t* code = xcodes + i * code_size;
+        //插入 倒排列表中
         size_t offset = invlists->add_entry(key, id, code);
 
         if (residuals_2) {
@@ -339,11 +357,12 @@ void IndexIVFPQ::add_core_o(
             for (int j = 0; j < d; j++)
                 res2[j] = xi[j] - res2[j];
         }
-
+        //保留id和倒排列表的映射用的，用于开启 reconstruct，默认关闭
         direct_map.add_single_id(id, key, offset);
     }
 
     double t3 = getmillisecs();
+    indexIVF_stats.add_insert_ivf_time.add(t3-t2);
     if (verbose) {
         char comment[100] = {0};
         if (n_ignore > 0)
@@ -1060,6 +1079,7 @@ struct IVFPQScanner : IVFPQScannerT<Index::idx_t, METRIC_TYPE, PQDecoder>,
         return dis;
     }
 
+//重要代码！检索第二级查询
     size_t scan_codes(
             size_t ncode,
             const uint8_t* codes,
