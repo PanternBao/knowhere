@@ -21,6 +21,7 @@
 #include <faiss/invlists/InvertedLists.h>
 #include <faiss/utils/Heap.h>
 #include <knowhere/utils/BitsetView.h>
+#include <faiss/utils/AtomicDouble.h>
 
 namespace faiss {
 
@@ -465,6 +466,7 @@ struct IndexIVF : Index, Level1Quantizer {
     void dump();
 
     IndexIVF();
+    void set_thread(int threads);
 };
 
 struct RangeQueryResult;
@@ -536,11 +538,102 @@ struct IndexIVFStats {
     size_t nheap_updates;     // nb of times the heap was updated
     double quantization_time; // time spent quantizing vectors (in ms)
     double search_time;       // time spent searching lists (in ms)
-
+    AtomicDouble train_q1_preprocess1_time;
+    AtomicDouble train_q1_preprocess2_time;
+    AtomicDouble train_q1_preprocess3_time;
+    AtomicDouble train_q1_preprocess4_time;
+    AtomicDouble train_q1_preprocess5_time;
+    AtomicDouble train_q1_find_nearst_time;
+    AtomicDouble train_q1_compute_centroids_time;
+    AtomicDouble train_q1_split_cluster_time;
+    AtomicDouble train_q1_post_process_time;
+    AtomicDouble train_q1_time;
+    AtomicDouble train_q2_sub_time;
+    AtomicDouble train_q2_residuals_time;
+    AtomicDouble train_q2_time;
+    AtomicDouble train_precomputed_time;
+    AtomicDouble add_assign_q1_time;
+    AtomicDouble add_compute_code_time;
+    AtomicDouble add_insert_ivf_time;
+    AtomicDouble search_topw_time;
+    AtomicDouble search_prefetch_lists_time;
+    AtomicDouble search_term3_calculate_time;
+    AtomicDouble search_term3_add_time;
+    AtomicDouble search_lookup_time;
+    AtomicDouble search_topk_time;
     IndexIVFStats() {
         reset();
     }
     void reset();
+    double getTrainQ1Preprocess1Time() {
+        return train_q1_preprocess1_time.getValue();
+    }
+    double getTrainQ1Preprocess2Time() {
+        return train_q1_preprocess2_time.getValue();
+    }
+    double getTrainQ1Preprocess3Time() {
+        return train_q1_preprocess3_time.getValue();
+    }
+    double getTrainQ1Preprocess4Time() {
+        return train_q1_preprocess4_time.getValue();
+    }
+    double getTrainQ1Preprocess5Time() {
+        return train_q1_preprocess5_time.getValue();
+    }
+    double getTrainQ1FindNearstTime() {
+        return train_q1_find_nearst_time.getValue();
+    }
+    double getTrainQ1ComputeCentroidsTime() {
+        return train_q1_compute_centroids_time.getValue();
+    }
+    double getTrainQ1SplitClusterTime() {
+        return train_q1_split_cluster_time.getValue();
+    }
+    double getTrainQ1PostProcessTime() {
+        return train_q1_post_process_time.getValue();
+    }
+    double getTrainQ1Time() {
+        return train_q1_time.getValue();
+    }
+    double getTrainQ2SubTime() {
+        return train_q2_sub_time.getValue();
+    }
+    double getTrainQ2ResidualsTime() {
+        return train_q2_residuals_time.getValue();
+    }
+    double getTrainQ2Time() {
+        return train_q2_time.getValue();
+    }
+    double getTrainPrecomputedTime() {
+        return train_precomputed_time.getValue();
+    }
+    double getAddAssignQ1Time() {
+        return add_assign_q1_time.getValue();
+    }
+    double getAddComputeCodeTime() {
+        return add_compute_code_time.getValue();
+    }
+    double getAddInsertIvfTime() {
+        return add_insert_ivf_time.getValue();
+    }
+    double getSearchTopwTime() {
+        return search_topw_time.getValue();
+    }
+    double getSearchPrefetchListsTime() {
+        return search_prefetch_lists_time.getValue();
+    }
+    double getSearchTerm3CalculateTime() {
+        return search_term3_calculate_time.getValue();
+    }
+    double getSearchTerm3AddTime() {
+        return search_term3_add_time.getValue();
+    }
+    double getSearchTopkTime() {
+        return search_topk_time.getValue();
+    }
+    double getSearchLookupTime() {
+        return search_lookup_time.getValue();
+    }
     void add(const IndexIVFStats& other);
 };
 

@@ -197,7 +197,8 @@ void knn_L2sqr(
         size_t ny,
         float_maxheap_array_t* res,
         const float* y_norm2 = nullptr,
-        const BitsetView bitset = nullptr);
+        const BitsetView bitset = nullptr,
+        bool verbose = false);
 
 void knn_jaccard (
         const float* x,

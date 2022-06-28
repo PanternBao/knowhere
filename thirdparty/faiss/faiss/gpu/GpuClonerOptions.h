@@ -41,6 +41,8 @@ struct GpuClonerOptions {
     /// For IndexIVFScalarQuantizer
     bool allInGpu;
 
+    bool interleavedLayout = false;
+
     /// Set verbose options on the index
     bool verbose;
 };

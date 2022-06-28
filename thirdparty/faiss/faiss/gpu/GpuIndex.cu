@@ -13,6 +13,7 @@
 #include <faiss/gpu/utils/CopyUtils.cuh>
 
 #include <algorithm>
+#include <iostream>
 #include <limits>
 #include <memory>
 
@@ -65,6 +66,16 @@ GpuIndex::GpuIndex(
 
     FAISS_ASSERT((bool)resources_);
     resources_->initializeForDevice(config_.device);
+    //todo: 1G too big
+    size_t originLimit;
+    cudaDeviceGetLimit(&originLimit, cudaLimitMallocHeapSize);
+    long gpuLimit = 1024*1024*1024; // 1G  is very sufficient
+    if (originLimit != gpuLimit) {
+        // Note: Setting cudaLimitMallocHeapSize must be performed before
+        // launching any kernel that uses the malloc() or free() device
+        // system calls, otherwise cudaErrorInvalidValue will be returned.
+        cudaDeviceSetLimit(cudaLimitMallocHeapSize, gpuLimit);
+    }
 }
 
 int GpuIndex::getDevice() const {

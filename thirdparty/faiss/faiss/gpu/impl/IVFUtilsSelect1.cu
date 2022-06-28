@@ -33,10 +33,123 @@ __global__ void pass1SelectLists(
         IndicesOptions opt,
         Tensor<float, 3, true> heapDistances,
         Tensor<int, 3, true> heapIndices) {
-    constexpr int kNumWarps = ThreadsPerBlock / kWarpSize;
+    extern __shared__ float arrays[];
+    float* smemK = (float*)arrays;
+    int* smemV = (int*)&smemK[ThreadsPerBlock * NumWarpQ / kWarpSize];
+    //    __shared__ float smemK[kNumWarps * NumWarpQ];
+    //    __shared__ int smemV[kNumWarps * NumWarpQ];
 
-    __shared__ float smemK[kNumWarps * NumWarpQ];
-    __shared__ int smemV[kNumWarps * NumWarpQ];
+    constexpr auto kInit = Dir ? kFloatMin : kFloatMax;
+    BlockSelect<
+            float,
+            int,
+            Dir,
+            Comparator<float>,
+            NumWarpQ,
+            NumThreadQ,
+            ThreadsPerBlock>
+            heap(kInit, -1, smemK, smemV, k);
+
+    auto queryId = blockIdx.y;
+    auto sliceId = blockIdx.x;
+    auto numSlices = gridDim.x;
+
+    int sliceSize = (nprobe / numSlices);
+    int sliceStart = sliceSize * sliceId;
+    int sliceEnd = sliceId == (numSlices - 1) ? nprobe : sliceStart + sliceSize;
+    auto offsets = prefixSumOffsets[queryId].data();
+
+    // We ensure that before the array (at offset -1), there is a 0 value
+    int start = *(&offsets[sliceStart] - 1);
+    int end = offsets[sliceEnd - 1];
+
+    int num = end - start;
+    int limit = utils::roundDown(num, kWarpSize);
+
+    int i = threadIdx.x;
+    auto distanceStart = distance[start].data();
+    bool bitsetEmpty = (bitset.getSize(0) == 0);
+    Index::idx_t index = -1;
+
+    // BlockSelect add cannot be used in a warp divergent circumstance; we
+    // handle the remainder warp below
+    for (; i < limit; i += blockDim.x) {
+        do {
+            if (!bitsetEmpty) {
+                index = getListIndex(queryId,
+                                     start + i,
+                                     listIndices,
+                                     prefixSumOffsets,
+                                     topQueryToCentroid,
+                                     opt);
+                if (bitset[index >> 3] & (0x1 << (index & 0x7))) {
+                    break;
+                }
+            }
+            heap.addThreadQ(distanceStart[i], start + i);
+        } while (0);
+        heap.checkThreadQ();
+    }
+
+    // Handle warp divergence separately
+    if (i < num) {
+        do {
+            if (!bitsetEmpty) {
+                index = getListIndex(queryId,
+                                     start + i,
+                                     listIndices,
+                                     prefixSumOffsets,
+                                     topQueryToCentroid,
+                                     opt);
+                if (bitset[index >> 3] & (0x1 << (index & 0x7))) {
+                    break;
+                }
+            }
+            heap.addThreadQ(distanceStart[i], start + i);
+        } while (0);
+    }
+
+    // Merge all final results
+    heap.reduce();
+
+    // Write out the final k-selected values; they should be all
+    // together
+    for (int i = threadIdx.x; i < k; i += blockDim.x) {
+        heapDistances[queryId][sliceId][i] = smemK[i];
+        heapIndices[queryId][sliceId][i] = smemV[i];
+    }
+}
+
+template <int ThreadsPerBlock, int NumWarpQ, int NumThreadQ, bool Dir>
+__global__ void pass1SelectListsUseGlobalMemory(
+        void** listIndices,
+        Tensor<int, 2, true> prefixSumOffsets,
+        Tensor<int, 2, true> topQueryToCentroid,
+        Tensor<uint8_t, 1, true> bitset,
+        Tensor<float, 1, true> distance,
+        int nprobe,
+        int k,
+        IndicesOptions opt,
+        Tensor<float, 3, true> heapDistances, // queryTileSize, pass2Chunks, k
+        Tensor<int, 3, true> heapIndices      // queryTileSize, pass2Chunks, k
+) {
+    __shared__ float* mallocArray;
+    float* smemK = NULL;
+    int* smemV = NULL;
+
+    if (threadIdx.x == 0) {
+        mallocArray = (float*)malloc(
+                ThreadsPerBlock * NumWarpQ / kWarpSize * (4 + 4));
+        if (mallocArray == NULL) {
+            printf("illegal memory！！！\n");
+            asm("trap;");
+            return;
+        }
+    }
+    __syncthreads();
+
+    smemK = (float*)mallocArray;
+    smemV = (int*)&smemK[ThreadsPerBlock * NumWarpQ / kWarpSize];
 
     constexpr auto kInit = Dir ? kFloatMin : kFloatMax;
     BlockSelect<
@@ -117,6 +230,12 @@ __global__ void pass1SelectLists(
         heapDistances[queryId][sliceId][i] = smemK[i];
         heapIndices[queryId][sliceId][i] = smemV[i];
     }
+
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        // printf("free blockId %d\n", blockId);
+        free(mallocArray);
+    }
 }
 
 void runPass1SelectLists(
@@ -137,22 +256,49 @@ void runPass1SelectLists(
 
     auto grid = dim3(heapDistances.getSize(1), prefixSumOffsets.getSize(0));
 
-#define RUN_PASS(BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR)         \
-    do {                                                       \
-        pass1SelectLists<BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR> \
-                <<<grid, BLOCK, 0, stream>>>(                  \
-                        listIndices.data().get(),              \
-                        prefixSumOffsets,                      \
-                        topQueryToCentroid,                    \
-                        bitset,                                \
-                        distance,                              \
-                        nprobe,                                \
-                        k,                                     \
-                        indicesOptions,                        \
-                        heapDistances,                         \
-                        heapIndices);                          \
-        CUDA_TEST_ERROR();                                     \
-        return; /* success */                                  \
+#define RUN_PASS(BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR)                      \
+    do {                                                                    \
+        const int use_memory = NUM_WARP_Q * BLOCK / kWarpSize * (4 + 4);    \
+                                                                            \
+        if (use_memory > 48 * 1024 && use_memory <= 64 * 1024) {            \
+            cudaFuncSetAttribute(                                           \
+                    pass1SelectLists<BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR>, \
+                    cudaFuncAttributeMaxDynamicSharedMemorySize,            \
+                    use_memory);                                            \
+        }                                                                   \
+                                                                            \
+        if (use_memory <= 64 * 1024) {                                      \
+            pass1SelectLists<BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR>          \
+                    <<<grid, BLOCK, 0, stream>>>(                           \
+                            listIndices.data().get(),                       \
+                            prefixSumOffsets,                               \
+                            topQueryToCentroid,                             \
+                            bitset,                                         \
+                            distance,                                       \
+                            nprobe,                                         \
+                            k,                                              \
+                            indicesOptions,                                 \
+                            heapDistances,                                  \
+                            heapIndices);                                   \
+        } else {                                                            \
+            pass1SelectListsUseGlobalMemory<                                \
+                    BLOCK,                                                  \
+                    NUM_WARP_Q,                                             \
+                    NUM_THREAD_Q,                                           \
+                    DIR><<<grid, BLOCK, 0, stream>>>(                       \
+                    listIndices.data().get(),                               \
+                    prefixSumOffsets,                                       \
+                    topQueryToCentroid,                                     \
+                    bitset,                                                 \
+                    distance,                                               \
+                    nprobe,                                                 \
+                    k,                                                      \
+                    indicesOptions,                                         \
+                    heapDistances,                                          \
+                    heapIndices);                                           \
+        }                                                                   \
+        CUDA_TEST_ERROR();                                                  \
+        return; /* success */                                               \
     } while (0)
 
 #if GPU_MAX_SELECTION_K >= 2048
@@ -176,6 +322,12 @@ void runPass1SelectLists(
             RUN_PASS(128, 1024, 8, DIR); \
         } else if (k <= 2048) {          \
             RUN_PASS(64, 2048, 8, DIR);  \
+        } else if (k <= 4096) {          \
+            RUN_PASS(32, 4096, 8, DIR);  \
+        } else if (k <= 8192) {          \
+            RUN_PASS(32, 8192, 8, DIR);  \
+        } else if (k <= 16384) {         \
+            RUN_PASS(32, 16384, 8, DIR); \
         }                                \
     } while (0)
 

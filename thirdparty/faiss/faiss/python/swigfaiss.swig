@@ -64,18 +64,17 @@ typedef uint64_t size_t;
 
 #endif
 
-
+#include <faiss/Index2Layer.h>
+#include <faiss/IndexAdditiveQuantizer.h>
 #include <faiss/IndexFlat.h>
-#include <faiss/VectorTransform.h>
-#include <faiss/IndexPreTransform.h>
+#include <faiss/IndexIVF.h>
+#include <faiss/IndexIVFFlat.h>
+#include <faiss/IndexIVFPQ.h>
+#include <faiss/IndexIVFPQR.h>
 #include <faiss/IndexLSH.h>
 #include <faiss/IndexPQ.h>
-#include <faiss/IndexAdditiveQuantizer.h>
-#include <faiss/IndexIVF.h>
-#include <faiss/IndexIVFPQ.h>
-#include <faiss/Index2Layer.h>
-#include <faiss/IndexIVFPQR.h>
-#include <faiss/IndexIVFFlat.h>
+#include <faiss/IndexPreTransform.h>
+#include <faiss/VectorTransform.h>
 
 #include <faiss/IndexPQFastScan.h>
 #include <faiss/IndexIVFPQFastScan.h>
@@ -283,6 +282,7 @@ void gpu_sync_all_devices();
 #include <faiss/gpu/GpuIndexFlat.h>
 #include <faiss/gpu/GpuIndexIVF.h>
 #include <faiss/gpu/GpuIndexIVFPQ.h>
+#include <faiss/gpu/GpuIndexIVFPQR.h>
 #include <faiss/gpu/GpuIndexIVFFlat.h>
 #include <faiss/gpu/GpuIndexIVFScalarQuantizer.h>
 #include <faiss/gpu/GpuIndexBinaryFlat.h>
@@ -497,7 +497,7 @@ void gpu_sync_all_devices()
 %include  <faiss/gpu/GpuIndexBinaryFlat.h>
 %include  <faiss/gpu/GpuDistance.h>
 %include  <faiss/gpu/GpuIcmEncoder.h>
-
+%include  <faiss/gpu/GpuIndexIVFPQR.h>
 
 #endif
 
@@ -582,6 +582,7 @@ void gpu_sync_all_devices()
     DOWNCAST ( Index2Layer )
 #ifdef GPU_WRAPPER
     DOWNCAST_GPU ( GpuIndexIVFPQ )
+    DOWNCAST_GPU ( GpuIndexIVFPQR )
     DOWNCAST_GPU ( GpuIndexIVFFlat )
     DOWNCAST_GPU ( GpuIndexIVFScalarQuantizer )
     DOWNCAST_GPU ( GpuIndexFlat )
