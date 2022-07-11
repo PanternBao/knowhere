@@ -270,7 +270,7 @@ void ProductQuantizer::train(int n, const float* x) {
                        dsub * sizeof(float));
 
             Clustering clus(dsub, ksub, cp);
-
+            clus.train_type = 2;
             // we have some initialization for the centroids
             if (final_train_type != Train_default) {
                 clus.centroids.resize(dsub * ksub);
@@ -304,7 +304,7 @@ void ProductQuantizer::train(int n, const float* x) {
 
     } else {
         Clustering clus(dsub, ksub, cp);
-
+        clus.train_type = 2;
         if (verbose) {
             clus.verbose = true;
             printf("Training all PQ slices at once\n");
@@ -522,7 +522,7 @@ void ProductQuantizer::compute_inner_prod_table(
     size_t m;
 
     for (m = 0; m < M; m++) {
-        fvec_inner_products_ny(
+        fvec_inner_products_ny(//SIMD 命令加速
                 dis_table + m * ksub,
                 x + m * dsub,
                 get_centroids(m, 0),

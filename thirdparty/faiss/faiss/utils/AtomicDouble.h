@@ -22,15 +22,23 @@ class AtomicDouble {
     explicit AtomicDouble(const AtomicDouble& value_) {
         std::atomic_init(&data, value_.data.load());
     }
-    void add(double increase_value) {
+    void addMilliSecond(double increase_value) {
+        increase_value = increase_value / 1000;
         for (double g = data.load();
              !data.compare_exchange_strong(g, g + increase_value);)
             ;
     }
     void add(StopWatch watch) {
-        double increase_value = watch.getElapsedTime();
+        double increase_value = watch.getElapsedTime() / 1000;
         for (double g = data.load();
              !data.compare_exchange_strong(g, g + increase_value);)
+            ;
+    }
+
+    void sub(StopWatch watch) {
+        double increase_value = watch.getElapsedTime() / 1000;
+        for (double g = data.load();
+             !data.compare_exchange_strong(g, g - increase_value);)
             ;
     }
     double getValue() {

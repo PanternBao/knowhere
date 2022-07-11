@@ -114,7 +114,6 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
     sw.stop();
     indexIVF_stats.train_q2_time.add(sw);
 
-
     if (do_polysemous_training) {
         if (verbose)
             printf("doing polysemous training for PQ\n");
@@ -314,7 +313,7 @@ void IndexIVFPQ::add_core_o(
     }
 
     double t1 = getmillisecs();
-    indexIVF_stats.add_assign_q1_time.add(t1-t0);
+    indexIVF_stats.add_assign_q1_time.addMilliSecond(t1 - t0);
     uint8_t* xcodes = new uint8_t[n * code_size];
     ScopeDeleter<uint8_t> del_xcodes(xcodes);
 
@@ -332,7 +331,7 @@ void IndexIVFPQ::add_core_o(
     pq.compute_codes(to_encode, xcodes, n);
 
     double t2 = getmillisecs();
-    indexIVF_stats.add_compute_code_time.add(t2-t1);
+    indexIVF_stats.add_compute_code_time.addMilliSecond(t2 - t1);
     // TODO: parallelize?
     size_t n_ignore = 0;
     for (size_t i = 0; i < n; i++) {
@@ -362,7 +361,7 @@ void IndexIVFPQ::add_core_o(
     }
 
     double t3 = getmillisecs();
-    indexIVF_stats.add_insert_ivf_time.add(t3-t2);
+    indexIVF_stats.add_insert_ivf_time.addMilliSecond(t3 - t2);
     if (verbose) {
         char comment[100] = {0};
         if (n_ignore > 0)
@@ -1079,7 +1078,7 @@ struct IVFPQScanner : IVFPQScannerT<Index::idx_t, METRIC_TYPE, PQDecoder>,
         return dis;
     }
 
-//重要代码！检索第二级查询
+    //重要代码！检索第二级查询
     size_t scan_codes(
             size_t ncode,
             const uint8_t* codes,

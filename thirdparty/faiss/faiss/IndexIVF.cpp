@@ -96,6 +96,7 @@ void Level1Quantizer::train_q1(
             printf("Training level-1 quantizer on %zd vectors in %zdD\n", n, d);
 
         Clustering clus(d, nlist, cp);
+        clus.train_type = 1;
         quantizer->reset();
         if (clustering_index) {
             clus.train(n, x, *clustering_index);
@@ -118,6 +119,7 @@ void Level1Quantizer::train_q1(
                 (metric_type == METRIC_INNER_PRODUCT && cp.spherical));
 
         Clustering clus(d, nlist, cp);
+        clus.train_type = 1;
         if (!clustering_index) {
             IndexFlatL2 assigner(d);
             clus.train(n, x, assigner);
@@ -381,11 +383,11 @@ void IndexIVF::search(
         quantizer->search(n, x, nprobe, coarse_dis.get(), idx.get());
 
         double t1 = getmillisecs();
-        indexIVF_stats.search_topw_time.add(t1 - t0);
+        indexIVF_stats.search_topw_time.addMilliSecond(t1 - t0);
         //默认不用做什么
         invlists->prefetch_lists(idx.get(), n * nprobe);
         double tx = getmillisecs();
-        indexIVF_stats.search_prefetch_lists_time.add(tx - t1);
+        indexIVF_stats.search_prefetch_lists_time.addMilliSecond(tx - t1);
 
         search_preassigned(
                 n,
@@ -556,9 +558,10 @@ void IndexIVF::search_preassigned(
             if (list_size == 0) {
                 return (size_t)0;
             }
-
+            StopWatch sw = StopWatch::start();
             scanner->set_list(key, coarse_dis_i);
-
+            sw.stop();
+            indexIVF_stats.search_term3_add_time.add(sw);
             nlistv++;
 
             try {
@@ -571,10 +574,11 @@ void IndexIVF::search_preassigned(
                     sids.reset(new InvertedLists::ScopedIds(invlists, key));
                     ids = sids->get();
                 }
-
+                sw.restart();
                 nheap += scanner->scan_codes(
                         list_size, scodes.get(), ids, simi, idxi, k, bitset);
-
+                sw.stop();
+                indexIVF_stats.search_lookup_time.add(sw);
             } catch (const std::exception& e) {
                 std::lock_guard<std::mutex> lock(exception_mutex);
                 exception_string =
@@ -598,14 +602,14 @@ void IndexIVF::search_preassigned(
                 }
                 StopWatch sw = StopWatch::start();
                 // loop over queries
+                // 计算距离表
                 scanner->set_query(x + i * d);
                 float* simi = distances + i * k;
                 idx_t* idxi = labels + i * k;
 
                 init_result(simi, idxi);
                 sw.stop();
-                indexIVF_stats.search_q2_init_time.add(sw);
-                sw.restart();
+                indexIVF_stats.search_term3_calculate_time.add(sw);
 
                 idx_t nscan = 0;
 
@@ -622,8 +626,7 @@ void IndexIVF::search_preassigned(
                         break;
                     }
                 }
-                sw.stop();
-                indexIVF_stats.search_scan_code_time.add(sw);
+
                 sw.restart();
 
                 ndis += nscan;

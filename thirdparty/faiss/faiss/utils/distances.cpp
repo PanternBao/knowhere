@@ -21,6 +21,7 @@
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/impl/ResultHandler.h>
+#include <StopWatch.h>
 #include <faiss/utils/utils.h>
 
 #ifndef FINTEGER
@@ -352,22 +353,30 @@ void exhaustive_L2sqr_blas(
     if (nx == 0 || ny == 0)
         return;
 
+    StopWatch sw = StopWatch::start();
     /* block sizes */
-    const size_t bs_x = distance_compute_blas_query_bs;
-    const size_t bs_y = distance_compute_blas_database_bs;
+    const size_t bs_x = distance_compute_blas_query_bs;    // 4096
+    const size_t bs_y = distance_compute_blas_database_bs; // 1024
     // const size_t bs_x = 16, bs_y = 16;
     std::unique_ptr<float[]> ip_block(new float[bs_x * bs_y]);
     std::unique_ptr<float[]> x_norms(new float[nx]);
     std::unique_ptr<float[]> del2;
 
-    fvec_norms_L2sqr(x_norms.get(), x, d, nx);
+    fvec_norms_L2sqr(x_norms.get(), x, d, nx); // nx*d个 float 变为 nx*1个 float
+    sw.stop();
+    printf("step1 %f\n", sw.getElapsedTime());
+    sw.restart();
 
     if (!y_norms) {
         float* y_norms2 = new float[ny];
         del2.reset(y_norms2);
-        fvec_norms_L2sqr(y_norms2, y, d, ny);
+        fvec_norms_L2sqr(y_norms2, y, d, ny); // ny*d个 float 变为 ny*1个 float
         y_norms = y_norms2;
     }
+    sw.stop();
+    printf("step2 %f\n", sw.getElapsedTime());
+    sw.restart();
+    double muli_time = 0, lookup_time = 0, add_time = 0,lookup2_time=0;
 
     for (size_t i0 = 0; i0 < nx; i0 += bs_x) {
         size_t i1 = i0 + bs_x;
@@ -384,6 +393,8 @@ void exhaustive_L2sqr_blas(
             {
                 float one = 1, zero = 0;
                 FINTEGER nyi = j1 - j0, nxi = i1 - i0, di = d;
+                StopWatch sw2 = StopWatch::start();
+                // ny*nx*d ，维度只影响这一个
                 sgemm_("Transpose",
                        "Not transpose",
                        &nyi,
@@ -397,12 +408,15 @@ void exhaustive_L2sqr_blas(
                        &zero,
                        ip_block.get(),
                        &nyi);
+                sw2.stop();
+                muli_time += sw2.getElapsedTime();
             }
+            StopWatch sw3 = StopWatch::start();
 #pragma omp parallel for
-            for (int64_t i = i0; i < i1; i++) {
+            for (int64_t i = i0; i < i1; i++) { // x
                 float* ip_line = ip_block.get() + (i - i0) * (j1 - j0);
 
-                for (size_t j = j0; j < j1; j++) {
+                for (size_t j = j0; j < j1; j++) { // y
                     float ip = *ip_line;
                     float dis = x_norms[i] + y_norms[j] - 2 * ip;
 
@@ -500,10 +514,19 @@ static void knn_jaccard_blas(
                 }
             }
             res.add_results(j0, j1, ip_block);
+            sw3.stop();
+            lookup_time += sw3.getElapsedTime();
+            StopWatch sw2 = StopWatch::start();
+            res.add_results(j0, j1, ip_block.get());
+            sw2.stop();
+            add_time += sw2.getElapsedTime();
         }
         res.end_multiple();
         InterruptCallback::check();
     }
+    sw.stop();
+    printf("step3 %f \nstep4 %f\nstep5 %f\n", muli_time,lookup_time,add_time);
+    printf("step3-5 %f\n", sw.getElapsedTime());
 }
 
 } // anonymous namespace

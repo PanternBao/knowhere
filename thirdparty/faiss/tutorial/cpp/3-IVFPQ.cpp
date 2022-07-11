@@ -5,19 +5,19 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <faiss/IndexFlat.h>
+#include <faiss/IndexIVFPQ.h>
+#include <faiss/utils/distances.h>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
 
-#include <faiss/IndexFlat.h>
-#include <faiss/IndexIVFPQ.h>
-
 using idx_t = faiss::Index::idx_t;
 
 int main() {
-    int d = 64;      // dimension
-    int nb = 10000; // database size
-    int nq = 1000;  // nb of queries
+    int d = 128;      // dimension
+    int nb = 1000000; // database size
+    int nq = 100;    // nb of queries
 
     std::mt19937 rng;
     std::uniform_real_distribution<> distrib;
@@ -37,11 +37,28 @@ int main() {
         xq[d * i] += i / 1000.;
     }
 
-    int nlist = 100;
-    int k = 4;
-    int m = 8;                       // bytes per vector
+    int nlist = 8192;
+    int k = 1;
+    int m = 4;                       // bytes per vector
     faiss::IndexFlatL2 quantizer(d); // the other index
+    quantizer.train(nb, xb);
+    quantizer.add(nb, xb);
+    {
+        idx_t* I = new idx_t[k * nq];
+        float* D = new float[k * nq];
+        StopWatch sw = StopWatch::start();
+        for (int i = 0; i < 1; ++i) {
+            quantizer.search(nq, xq, k, D, I);
+        }
+        sw.stop();
+        printf("%f\n", sw.getElapsedTime());
+        return 0;
+    }
+
     faiss::IndexIVFPQ index(&quantizer, d, nlist, m, 8);
+    int table = index.use_precomputed_table;
+    index.nprobe = 10;
+    index.use_precomputed_table = 1;
     index.train(nb, xb);
     faiss::indexIVF_stats.reset();
     index.add(nb, xb);
@@ -49,7 +66,7 @@ int main() {
     { // sanity check
         idx_t* I = new idx_t[k * 5];
         float* D = new float[k * 5];
-
+        index.search(5, xb, k, D, I);
         index.search(5, xb, k, D, I);
         printf("I=\n");
         for (int i = 0; i < 5; i++) {
