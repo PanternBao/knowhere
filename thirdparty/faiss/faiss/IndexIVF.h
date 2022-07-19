@@ -466,6 +466,7 @@ struct IndexIVF : Index, Level1Quantizer {
     void dump();
 
     IndexIVF();
+    void set_thread(int threads);
 };
 
 struct RangeQueryResult;

@@ -616,6 +616,7 @@ void Clustering::train_encoded(
             double t0s = getmillisecs();
             sw.restart();
             if (!codec) {
+                index.train_type = train_type;
                 index.assign(nx, reinterpret_cast<const float *>(x),
                              assign.get(), dis.get());
             } else {

@@ -353,6 +353,12 @@ void IndexIVF::set_direct_map_type(DirectMap::Type type) {
     direct_map.set_type(type, invlists, ntotal);
 }
 
+void IndexIVF::set_thread(int threads) {
+    printf("default threads %d\n", omp_get_max_threads());
+    omp_set_num_threads(threads);
+    printf("current threads %d\n", omp_get_max_threads());
+}
+
 /** It is a sad fact of software that a conceptually simple function like this
  * becomes very complex when you factor in several ways of parallelizing +
  * interrupt/error handling + collecting stats + min/max collection. The

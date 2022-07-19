@@ -348,7 +348,8 @@ void exhaustive_L2sqr_blas(
         size_t ny,
         ResultHandler& res,
         const float* y_norms = nullptr,
-        const BitsetView bitset = nullptr) {
+        const BitsetView bitset = nullptr,
+        bool verbose = false) {
     // BLAS does not like empty matrices
     if (nx == 0 || ny == 0)
         return;
@@ -364,7 +365,11 @@ void exhaustive_L2sqr_blas(
 
     fvec_norms_L2sqr(x_norms.get(), x, d, nx); // nx*d个 float 变为 nx*1个 float
     sw.stop();
-    printf("step1 %f\n", sw.getElapsedTime());
+
+    if (verbose) {
+        printf("nx %lu,ny %lu,bs_x %lu,bs_y %lu\n", nx, ny, bs_x, bs_y);
+        printf("step1 %f\n", sw.getElapsedTime());
+    }
     sw.restart();
 
     if (!y_norms) {
@@ -374,9 +379,12 @@ void exhaustive_L2sqr_blas(
         y_norms = y_norms2;
     }
     sw.stop();
-    printf("step2 %f\n", sw.getElapsedTime());
+    if (verbose) {
+        printf("step2 %f\n", sw.getElapsedTime());
+    }
+
     sw.restart();
-    double muli_time = 0, lookup_time = 0, add_time = 0, lookup2_time=0;
+    double muli_time = 0, lookup_time = 0, add_time = 0;
 
     for (size_t i0 = 0; i0 < nx; i0 += bs_x) {
         size_t i1 = i0 + bs_x;
@@ -440,8 +448,13 @@ void exhaustive_L2sqr_blas(
         InterruptCallback::check();
     }
     sw.stop();
-    printf("step3 %f \nstep4 %f\nstep5 %f\n", muli_time, lookup_time, add_time);
-    printf("step3-5 %f\n", sw.getElapsedTime());
+    if (verbose) {
+        printf("step3 %f \nstep4 %f\nstep5 %f\n",
+               muli_time,
+               lookup_time,
+               add_time);
+        printf("step3-5 %f\n", sw.getElapsedTime());
+    }
 }
 
 template <class DistanceCorrection, class ResultHandler>
@@ -573,7 +586,8 @@ void knn_L2sqr(
         size_t ny,
         float_maxheap_array_t* ha,
         const float* y_norm2,
-        const BitsetView bitset) {
+        const BitsetView bitset,
+        bool verbose) {
     //用于获取前 topK个值，使用堆
     if (ha->k < distance_compute_min_k_reservoir) {
         HeapResultHandler<CMax<float, int64_t>> res(
@@ -582,7 +596,7 @@ void knn_L2sqr(
         if (nx < distance_compute_blas_threshold) {
             exhaustive_L2sqr_IP_seq(x, y, d, nx, ny, res, fvec_L2sqr, bitset);
         } else {
-            exhaustive_L2sqr_blas(x, y, d, nx, ny, res, y_norm2, bitset);
+            exhaustive_L2sqr_blas(x, y, d, nx, ny, res, y_norm2, bitset, verbose);
         }
     } else {
         ReservoirResultHandler<CMax<float, int64_t>> res(
@@ -590,7 +604,7 @@ void knn_L2sqr(
         if (nx < distance_compute_blas_threshold) {
             exhaustive_L2sqr_IP_seq(x, y, d, nx, ny, res, fvec_L2sqr, bitset);
         } else {
-            exhaustive_L2sqr_blas(x, y, d, nx, ny, res, y_norm2, bitset);
+            exhaustive_L2sqr_blas(x, y, d, nx, ny, res, y_norm2, bitset, verbose);
         }
     }
 }
