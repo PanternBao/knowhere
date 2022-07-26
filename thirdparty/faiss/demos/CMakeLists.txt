@@ -26,3 +26,5 @@ target_link_libraries(demo_weighted_kmeans PRIVATE faiss)
 
 add_executable(IVFPQ EXCLUDE_FROM_ALL IVFPQ.cpp)
 target_link_libraries(IVFPQ PRIVATE faiss)
+add_executable(GPUIVFPQ EXCLUDE_FROM_ALL GPUIVFPQ.cpp)
+target_link_libraries(GPUIVFPQ PRIVATE faiss)
