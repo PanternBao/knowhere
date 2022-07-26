@@ -64,8 +64,8 @@ IVFPQ::IVFPQ(
 
     FAISS_ASSERT(bitsPerSubQuantizer_ <= 8);
     FAISS_ASSERT(dim_ % numSubQuantizers_ == 0);
-    FAISS_ASSERT(
-            interleavedLayout || isSupportedPQCodeLength(numSubQuantizers_));
+//    FAISS_ASSERT(
+//            interleavedLayout || isSupportedPQCodeLength(numSubQuantizers_));
 
     setPQCentroids_(pqCentroidData);
 }

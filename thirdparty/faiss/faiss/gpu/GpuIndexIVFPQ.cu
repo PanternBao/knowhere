@@ -454,12 +454,12 @@ void GpuIndexIVFPQ::verifySettings_() const {
             this->d);
 
     // The number of bytes per encoded vector must be one we support
-    FAISS_THROW_IF_NOT_FMT(
-            ivfpqConfig_.interleavedLayout ||
-                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
-            "Number of bytes per encoded vector / sub-quantizers (%d) "
-            "is not supported",
-            subQuantizers_);
+//    FAISS_THROW_IF_NOT_FMT(
+//            ivfpqConfig_.interleavedLayout ||
+//                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
+//            "Number of bytes per encoded vector / sub-quantizers (%d) "
+//            "is not supported",
+//            subQuantizers_);
 
     // We must have enough shared memory on the current device to store
     // our lookup distances
@@ -474,17 +474,17 @@ void GpuIndexIVFPQ::verifySettings_() const {
             lookupTableSize * subQuantizers_ * utils::pow2(bitsPerCode_);
     size_t smemPerBlock = getMaxSharedMemPerBlock(config_.device);
 
-    FAISS_THROW_IF_NOT_FMT(
-            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
-            "Device %d has %zu bytes of shared memory, while "
-            "%d bits per code and %d sub-quantizers requires %zu "
-            "bytes. Consider useFloat16LookupTables and/or "
-            "reduce parameters",
-            config_.device,
-            smemPerBlock,
-            bitsPerCode_,
-            subQuantizers_,
-            requiredSmemSize);
+//    FAISS_THROW_IF_NOT_FMT(
+//            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
+//            "Device %d has %zu bytes of shared memory, while "
+//            "%d bits per code and %d sub-quantizers requires %zu "
+//            "bytes. Consider useFloat16LookupTables and/or "
+//            "reduce parameters",
+//            config_.device,
+//            smemPerBlock,
+//            bitsPerCode_,
+//            subQuantizers_,
+//            requiredSmemSize);
 }
 
 } // namespace gpu
