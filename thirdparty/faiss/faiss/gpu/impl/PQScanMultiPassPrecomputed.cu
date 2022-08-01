@@ -304,6 +304,112 @@ __global__ void pqScanPrecomputedMultiPass(
     }
 }
 
+template <int NumSubQuantizers, typename LookupT, typename LookupVecT>
+__global__ void pqScanPrecomputedMultiPass2(
+        char* smemTerm23,
+        long smem,
+        Tensor<float, 2, true> queries,
+        Tensor<float, 2, true> precompTerm1,
+        Tensor<LookupT, 3, true> precompTerm2,
+        Tensor<LookupT, 3, true> precompTerm3,
+        Tensor<int, 2, true> topQueryToCentroid,
+        void** listCodes,
+        int* listLengths,
+        Tensor<int, 2, true> prefixSumOffsets,
+        Tensor<float, 1, true> distance) {
+    // precomputed term 2 + 3 storage
+    // (sub q)(code id)
+    int blockId = blockIdx.y * gridDim.x + blockIdx.x;
+    LookupT* term23 = (LookupT*)(smemTerm23 + smem * blockId);
+
+    // Each block handles a single query
+    auto queryId = blockIdx.y;
+    auto probeId = blockIdx.x;
+    auto codesPerSubQuantizer = precompTerm2.getSize(2);
+    auto precompTermSize = precompTerm2.getSize(1) * codesPerSubQuantizer;
+
+    // This is where we start writing out data
+    // We ensure that before the array (at offset -1), there is a 0 value
+    int outBase = *(prefixSumOffsets[queryId][probeId].data() - 1);
+    float* distanceOut = distance[outBase].data();
+
+    auto listId = topQueryToCentroid[queryId][probeId];
+    // Safety guard in case NaNs in input cause no list ID to be generated
+    if (listId == -1) {
+        return;
+    }
+
+    uint8_t* codeList = (uint8_t*)listCodes[listId];
+    int limit = listLengths[listId];
+
+    constexpr int kNumCode32 =
+            NumSubQuantizers <= 4 ? 1 : (NumSubQuantizers / 4);
+    unsigned int code32[kNumCode32];
+    unsigned int nextCode32[kNumCode32];
+
+    // We double-buffer the code loading, which improves memory utilization
+    if (threadIdx.x < limit) {
+        LoadCode32<NumSubQuantizers>::load(code32, codeList, threadIdx.x);
+    }
+
+    // Load precomputed terms 1, 2, 3
+    float term1 = precompTerm1[queryId][probeId];
+    loadPrecomputedTerm<LookupT, LookupVecT>(
+            term23,
+            precompTerm2[listId].data(),
+            precompTerm3[queryId].data(),
+            precompTermSize);
+
+    // Prevent WAR dependencies
+    __syncthreads();
+
+    // Each thread handles one code element in the list, with a
+    // block-wide stride
+    for (int codeIndex = threadIdx.x; codeIndex < limit;
+         codeIndex += blockDim.x) {
+        // Prefetch next codes
+        if (codeIndex + blockDim.x < limit) {
+            LoadCode32<NumSubQuantizers>::load(
+                    nextCode32, codeList, codeIndex + blockDim.x);
+        }
+
+        float dist = term1;
+
+#pragma unroll
+        for (int word = 0; word < kNumCode32; ++word) {
+            constexpr int kBytesPerCode32 =
+                    NumSubQuantizers < 4 ? NumSubQuantizers : 4;
+
+            if (kBytesPerCode32 == 1) {
+                auto code = code32[0];
+                dist = ConvertTo<float>::to(term23[code]);
+
+            } else {
+#pragma unroll
+                for (int byte = 0; byte < kBytesPerCode32; ++byte) {
+                    auto code = getByte(code32[word], byte * 8, 8);
+
+                    auto offset = codesPerSubQuantizer *
+                            (word * kBytesPerCode32 + byte);
+
+                    dist += ConvertTo<float>::to(term23[offset + code]);
+                }
+            }
+        }
+
+        // Write out intermediate distance result
+        // We do not maintain indices here, in order to reduce global
+        // memory traffic. Those are recovered in the final selection step.
+        distanceOut[codeIndex] = dist;
+
+        // Rotate buffers
+#pragma unroll
+        for (int word = 0; word < kNumCode32; ++word) {
+            code32[word] = nextCode32[word];
+        }
+    }
+}
+
 void runMultiPassTile(
         GpuResources* res,
         Tensor<float, 2, true>& queries,
@@ -342,6 +448,8 @@ void runMultiPassTile(
 
     // The vector interleaved layout implementation
     if (interleavedCodeLayout) {
+        std::cout << "interleave"
+                  << "\n";
         auto kThreadsPerBlock = 256;
 
         auto grid = dim3(
@@ -419,24 +527,54 @@ void runMultiPassTile(
         auto smem = useFloat16Lookup ? sizeof(half) : sizeof(float);
 
         smem *= numSubQuantizers * numSubQuantizerCodes;
-        FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
+        // FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
 
-#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                 \
-    do {                                                              \
-        auto precompTerm2T = precompTerm2.toTensor<LOOKUP_T>();       \
-        auto precompTerm3T = precompTerm3.toTensor<LOOKUP_T>();       \
-                                                                      \
-        pqScanPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
-                <<<grid, block, smem, stream>>>(                      \
-                        queries,                                      \
-                        precompTerm1,                                 \
-                        precompTerm2T,                                \
-                        precompTerm3T,                                \
-                        topQueryToCentroid,                           \
-                        listCodes.data().get(),                       \
-                        listLengths.data().get(),                     \
-                        prefixSumOffsets,                             \
-                        allDistances);                                \
+#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                      \
+    do {                                                                   \
+        auto precompTerm2T = precompTerm2.toTensor<LOOKUP_T>();            \
+        auto precompTerm3T = precompTerm3.toTensor<LOOKUP_T>();            \
+        if (smem <= getMaxSharedMemPerBlockCurrentDevice()) {              \
+            printf("use v1\n");                                            \
+            pqScanPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T>  \
+                    <<<grid, block, smem, stream>>>(                       \
+                            queries,                                       \
+                            precompTerm1,                                  \
+                            precompTerm2T,                                 \
+                            precompTerm3T,                                 \
+                            topQueryToCentroid,                            \
+                            listCodes.data().get(),                        \
+                            listLengths.data().get(),                      \
+                            prefixSumOffsets,                              \
+                            allDistances);                                 \
+        } else {                                                           \
+            printf("use v2\n");                                            \
+            char* smemTerm23;                                              \
+            cudaMalloc(                                                    \
+                    (void**)&smemTerm23,                                   \
+                    smem* topQueryToCentroid.getSize(1) *                  \
+                            topQueryToCentroid.getSize(0));                \
+            std::cout << "grid: "                                          \
+                      << "\t" << topQueryToCentroid.getSize(1) << "\t"     \
+                      << topQueryToCentroid.getSize(0) << "\n"             \
+                      << "block: " << kThreadsPerBlock << "\n"             \
+                      << "global memory:"                                  \
+                      << smem * topQueryToCentroid.getSize(1) *            \
+                            topQueryToCentroid.getSize(0)                  \
+                      << "\n";                                             \
+            pqScanPrecomputedMultiPass2<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
+                    <<<grid, block, smem, stream>>>(                       \
+                            smemTerm23,                                    \
+                            smem,                                          \
+                            queries,                                       \
+                            precompTerm1,                                  \
+                            precompTerm2T,                                 \
+                            precompTerm3T,                                 \
+                            topQueryToCentroid,                            \
+                            listCodes.data().get(),                        \
+                            listLengths.data().get(),                      \
+                            prefixSumOffsets,                              \
+                            allDistances);                                 \
+        }                                                                  \
     } while (0)
 
 #define RUN_PQ(NUM_SUB_Q)                         \
@@ -496,6 +634,9 @@ void runMultiPassTile(
                 break;
             case 96:
                 RUN_PQ(96);
+                break;
+            case 128:
+                RUN_PQ(128);
                 break;
             default:
                 FAISS_ASSERT(false);
