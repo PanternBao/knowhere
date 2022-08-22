@@ -454,12 +454,12 @@ void GpuIndexIVFPQ::verifySettings_() const {
             this->d);
 
     // The number of bytes per encoded vector must be one we support
-//    FAISS_THROW_IF_NOT_FMT(
-//            ivfpqConfig_.interleavedLayout ||
-//                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
-//            "Number of bytes per encoded vector / sub-quantizers (%d) "
-//            "is not supported",
-//            subQuantizers_);
+    //    FAISS_THROW_IF_NOT_FMT(
+    //            ivfpqConfig_.interleavedLayout ||
+    //                    IVFPQ::isSupportedPQCodeLength(subQuantizers_),
+    //            "Number of bytes per encoded vector / sub-quantizers (%d) "
+    //            "is not supported",
+    //            subQuantizers_);
 
     // We must have enough shared memory on the current device to store
     // our lookup distances

@@ -39,7 +39,7 @@ int test_search() {
     int d = 128;     // dimension
     int nb = 100000; // database size
     int nq = 5000;   // nb of queries
-    int nlist = 8192;
+    int nlist = 1024;
     int nprobe = 512;
     int k = 1000;
     int m = 64;
@@ -64,23 +64,23 @@ int test_search() {
     // bytes per vector
     faiss::IndexFlatL2 quantizer(d); // the other index
 
-    {
-        //        quantizer.train(nb, xb);
-        //        quantizer.add(nb, xb);
-        idx_t* I = new idx_t[k * nq];
-        float* D = new float[k * nq];
-        StopWatch sw = StopWatch::start();
-        for (int i = 0; i < 1; ++i) {
-            quantizer.search2(nb, xb, k, D, I);
-        }
-        sw.stop();
-        printf("%f\n", sw.getElapsedTime());
-        return 0;
-    }
+    //    {
+    //        //        quantizer.train(nb, xb);
+    //        //        quantizer.add(nb, xb);
+    //        idx_t* I = new idx_t[k * nq];
+    //        float* D = new float[k * nq];
+    //        StopWatch sw = StopWatch::start();
+    //        for (int i = 0; i < 1; ++i) {
+    //            quantizer.search2(nb, xb, k, D, I);
+    //        }
+    //        sw.stop();
+    //        printf("%f\n", sw.getElapsedTime());
+    //        return 0;
+    //    }
 
     faiss::IndexIVFPQ index(&quantizer, d, nlist, m, 8);
     int table = index.use_precomputed_table;
-    index.set_thread(128);
+    index.set_thread(16);
     index.nprobe = nprobe;
     index.use_precomputed_table = 1;
     printf("train\n");
@@ -97,8 +97,9 @@ int test_search() {
     { // search xq
         idx_t* I = new idx_t[k * nq];
         float* D = new float[k * nq];
-        int thread = 256;
-        while (thread >= 2) {
+        for (int i = 0; i < 10000; ++i) {
+            int thread = 16;
+            // while (thread >= 2) {
             faiss::indexIVF_stats.reset();
             index.set_thread(thread);
             StopWatch sw = StopWatch::start();
@@ -110,6 +111,7 @@ int test_search() {
                << faiss::indexIVF_stats.search_lookup_time.getValue() << "\t"
                << sw.getElapsedTime() << "\n";
             thread = thread >> 1;
+            // }
         }
         delete[] I;
         delete[] D;
@@ -128,41 +130,41 @@ void IndexFlat::search2(
         float* distances,
         idx_t* labels) const {
     int loop_count = 512;
-            {
-                int thread = 256;
-                printf("fvec_madd方法\t");
-                std::function<StopWatch()> func = [&]() -> StopWatch {
-                    return once_fvec_madd(n, x);
-                };
-                once_test(loop_count, thread, func);
-            }
-//    {
-//        int thread = 256;
-//        printf("fvec_madd2方法\t");
-//        std::function<StopWatch()> func = [&]() -> StopWatch {
-//            return once_fvec_madd2(n, x);
-//        };
-//        once_test(loop_count, thread, func);
-//    }
-//    {
-//        int thread = 256;
-//        printf("normal方法\t");
-//
-//        std::function<StopWatch()> func = [&]() -> StopWatch {
-//            int o = 908979;
-//            return once_normal(&o);
-//        };
-//        once_test(loop_count, thread, func);
-//    }
-//        {
-//            int thread = 256;
-//            printf("simd方法\t");
-//            std::unique_ptr<float[]> x_norms(new float[n]);
-//            std::function<StopWatch()> func = [&]() -> StopWatch {
-//                return once_simd(n, x, x_norms.get());
-//            };
-//            once_test(loop_count, thread, func);
-//        }
+    {
+        int thread = 256;
+        printf("fvec_madd方法\t");
+        std::function<StopWatch()> func = [&]() -> StopWatch {
+            return once_fvec_madd(n, x);
+        };
+        once_test(loop_count, thread, func);
+    }
+    //    {
+    //        int thread = 256;
+    //        printf("fvec_madd2方法\t");
+    //        std::function<StopWatch()> func = [&]() -> StopWatch {
+    //            return once_fvec_madd2(n, x);
+    //        };
+    //        once_test(loop_count, thread, func);
+    //    }
+    //    {
+    //        int thread = 256;
+    //        printf("normal方法\t");
+    //
+    //        std::function<StopWatch()> func = [&]() -> StopWatch {
+    //            int o = 908979;
+    //            return once_normal(&o);
+    //        };
+    //        once_test(loop_count, thread, func);
+    //    }
+    //        {
+    //            int thread = 256;
+    //            printf("simd方法\t");
+    //            std::unique_ptr<float[]> x_norms(new float[n]);
+    //            std::function<StopWatch()> func = [&]() -> StopWatch {
+    //                return once_simd(n, x, x_norms.get());
+    //            };
+    //            once_test(loop_count, thread, func);
+    //        }
 }
 void IndexFlat::once_test(
         int loop_count,
@@ -230,19 +232,18 @@ static void fvec_madd_ref2(
     //    }
     int n2 = 10000;
     for (int j = 0; j < n2; ++j) {
-        for (int i = 0; i < n/n2; i++)
+        for (int i = 0; i < n / n2; i++)
             c[i] = c[i] + bf;
     }
     //    for (long i = 0; i < 4000 * n; i++)
     //        *c = *c * 31;
     //        }
 }
-    StopWatch IndexFlat::once_fvec_madd2(idx_t n, const float* x) const {
+StopWatch IndexFlat::once_fvec_madd2(idx_t n, const float* x) const {
     StopWatch sw2 = StopWatch::start();
     long n2 = 6000000;
     float* D = new float[n2];
     for (int j = 0; j < 1; ++j) {
-
         fvec_madd_ref2(n2, x, -2.0, x, D);
     }
     sw2.stop();

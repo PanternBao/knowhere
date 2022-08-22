@@ -135,6 +135,7 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
             const float* xx = trainset + i * d;
             float* res = residuals_2 + i * d;
             pq.decode(train_codes + i * pq.code_size, res);
+            //对于每一个训练集的数据 xx,计算他和离他最近的聚类中心的残差。
             for (int j = 0; j < d; j++)
                 res[j] = xx[j] - res[j];
         }
