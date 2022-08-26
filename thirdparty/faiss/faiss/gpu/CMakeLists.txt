@@ -16,6 +16,7 @@ set(FAISS_GPU_SRC
   GpuIndexIVF.cu
   GpuIndexIVFFlat.cu
   GpuIndexIVFPQ.cu
+        GpuIndexIVFPQR.cu
   GpuIndexIVFScalarQuantizer.cu
   GpuIndexIVFSQHybrid.cu
   GpuResources.cpp
@@ -31,6 +32,8 @@ set(FAISS_GPU_SRC
   impl/IVFFlatScan.cu
   impl/IVFInterleaved.cu
   impl/IVFPQ.cu
+        impl/IVFPQR.cu
+        impl/RefinePQ.cu
   impl/IVFUtils.cu
   impl/IVFUtilsSelect1.cu
   impl/IVFUtilsSelect2.cu
@@ -91,6 +94,7 @@ set(FAISS_GPU_HEADERS
   GpuIndexIVF.h
   GpuIndexIVFFlat.h
   GpuIndexIVFPQ.h
+        GpuIndexIVFPQR.h
   GpuIndexIVFScalarQuantizer.h
   GpuIndexIVFSQHybrid.h
   GpuIndicesOptions.h
@@ -110,6 +114,8 @@ set(FAISS_GPU_HEADERS
   impl/IVFFlatScan.cuh
   impl/IVFInterleaved.cuh
   impl/IVFPQ.cuh
+  impl/IVFPQR.cuh
+  impl/RefinePQ.cuh
   impl/IVFUtils.cuh
   impl/InterleavedCodes.h
   impl/L2Norm.cuh
