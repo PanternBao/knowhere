@@ -43,8 +43,17 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
     ~GpuIndexIVFPQR() override;
     void copyFrom(const faiss::IndexIVFPQR* index);
     void verifySettings_() const;
+
+
    protected:
-    std::unique_ptr<IVFPQR>  refine_pq;
+    void searchImpl_(
+            int n,
+            const float* x,
+            int k,
+            float* distances,
+            Index::idx_t* labels) const;
+    std::unique_ptr<IVFPQR> refine_pq;
+    int kFactor = 4;
 };
 
 } // namespace gpu

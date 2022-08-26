@@ -25,10 +25,10 @@
 #include <faiss/gpu/utils/MatrixMult.cuh>
 #include <faiss/gpu/utils/NoTypeTensor.cuh>
 #include <faiss/gpu/utils/Transpose.cuh>
+#include <iostream>
 #include <limits>
 #include <type_traits>
 #include <unordered_map>
-
 namespace faiss {
 namespace gpu {
 
@@ -69,6 +69,7 @@ RefinePQ::RefinePQ(
 //          precomputedCodes_(false)
 {
     setPQCentroids_(pqCentroidData);
+    setRefineCodes_(refineCodes);
 }
 
 RefinePQ::~RefinePQ() {}
@@ -94,12 +95,13 @@ void RefinePQ::setPQCentroids_(float* data) {
             {numSubQuantizers_, dimPerSubQuantizer_, numSubQuantizerCodes_});
 
     {
+        // host转换为device
         // Only needed for the duration of the transposition
         DeviceTensor<float, 3, true> pqDevice(
                 resources_,
                 makeTempAlloc(AllocType::Quantizer, stream),
                 pqHost);
-
+        //维度转换
         runTransposeAny(pqDevice, 1, 2, pqDeviceTranspose, stream);
     }
 
@@ -117,6 +119,31 @@ void RefinePQ::setPQCentroids_(float* data) {
 
     pqCentroidsMiddleCode_ = std::move(pqCentroidsMiddleCode);
 }
+
+void RefinePQ::setRefineCodes_(std::vector<uint8_t> refineCodes) {
+    auto stream = resources_->getDefaultStreamCurrentDevice();
+    nb = refineCodes.size()/numSubQuantizers_; // todo:maybe overflow
+
+    std::cout << "nb size:" << nb << "\n";
+    thrust::host_vector<uint8_t> hostMemory;
+
+    const uint8_t* data = refineCodes.data();
+    hostMemory.insert(hostMemory.end(), data, data + nb);
+    HostTensor<uint8_t, 2, true> pqHost(
+            hostMemory.data(), {nb, numSubQuantizers_});
+
+
+    DeviceTensor<uint8_t, 2, true> refine_code(
+            resources_, makeDevAlloc(AllocType::Other, stream), pqHost);
+
+    refineCodes_ = std::move(refine_code);
+}
+
+
+
+
+
+
 
 } // namespace gpu
 } // namespace faiss

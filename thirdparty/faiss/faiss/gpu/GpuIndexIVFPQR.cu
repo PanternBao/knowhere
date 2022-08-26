@@ -104,10 +104,29 @@ void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
     index_->copyInvertedListsFrom(index->invlists);
 }
 
-
 void GpuIndexIVFPQR::verifySettings_() const {
     GpuIndexIVFPQ::verifySettings_();
     // todo:custom verifySettings
+}
+
+void GpuIndexIVFPQR::searchImpl_(
+        int n,
+        const float* x,
+        int k,
+        float* distances,
+        Index::idx_t* labels) const {
+    // Device is already set in GpuIndex::search
+    FAISS_ASSERT(index_);
+    FAISS_ASSERT(n > 0);
+    FAISS_THROW_IF_NOT(nprobe > 0 && nprobe <= nlist);
+
+    // Data is already resident on the GPU
+    Tensor<float, 2, true> queries(const_cast<float*>(x), {n, (int)this->d});
+    Tensor<float, 2, true> outDistances(distances, {n, n * k});
+    Tensor<Index::idx_t, 2, true> outLabels(
+            const_cast<Index::idx_t*>(labels), {n, n * k});
+
+    index_->query(queries, nprobe,n* k, outDistances, outLabels);
 }
 
 } // namespace gpu

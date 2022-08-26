@@ -17,7 +17,7 @@
 
 #include <faiss/FaissHook.h>
 #include <faiss/impl/FaissAssert.h>
-
+#include <iostream>
 namespace faiss {
 
 /*****************************************
@@ -82,7 +82,7 @@ void IndexIVFPQR::add_core(
     idx_t n0 = ntotal;
 
     add_core_o(n, x, xids, residual_2, precomputed_idx);
-
+    std::cout <<"refine_code:"<< ntotal * refine_pq.code_size << "\n";
     refine_codes.resize(ntotal * refine_pq.code_size);
     // residual_2：每行的数据为："数据和离他最近的聚类中心"的残差。
     // 这里是找到 "数据和离他最近的聚类中心"的残差进行聚类化处理。

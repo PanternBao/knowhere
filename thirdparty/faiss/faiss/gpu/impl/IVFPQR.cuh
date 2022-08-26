@@ -36,11 +36,15 @@ class IVFPQR : public IVFPQ {
     ~IVFPQR() override;
 
     void setPrecomputedCodes(bool enable);
+    void query(
+            Tensor<float, 2, true>& queries,
+            int nprobe,
+            int k,
+            Tensor<float, 2, true>& outDistances,
+            Tensor<Index::idx_t, 2, true>& outIndices);
    private:
     RefinePQ refinePQ;
 
-    /// factor between k requested in search and the k requested from the IVFPQ
-    float kFactor;
 };
 
 } // namespace gpu

@@ -86,5 +86,87 @@ void IVFPQR::setPrecomputedCodes(bool enable) {
     }
 }
 
+void IVFPQR::query(
+        Tensor<float, 2, true>& queries,
+        int nprobe,
+        int k,
+        Tensor<float, 2, true>& outDistances,
+        Tensor<Index::idx_t, 2, true>& outIndices) {
+    // These are caught at a higher level
+    FAISS_ASSERT(nprobe <= GPU_MAX_SELECTION_K);
+    FAISS_ASSERT(k <= GPU_MAX_SELECTION_K);
+
+    auto stream = resources_->getDefaultStreamCurrentDevice();
+    nprobe = std::min(nprobe, quantizer_->getSize());
+
+    FAISS_ASSERT(queries.getSize(1) == dim_);
+    FAISS_ASSERT(outDistances.getSize(0) == queries.getSize(0));
+    FAISS_ASSERT(outIndices.getSize(0) == queries.getSize(0));
+
+    // Reserve space for the closest coarse centroids
+    // 2 代表二维数组，分配大小queries.getSize(0) * nprobe。
+    //第一个模板参数是分配的类型，第二是维度
+    // 具体见Tensor-inl.cuh和DeviceTensor-inl.cuh， 分配位置见AllocType
+    DeviceTensor<float, 2, true> coarseDistances(
+            resources_,
+            makeTempAlloc(AllocType::Other, stream),
+            {queries.getSize(0), nprobe});
+    DeviceTensor<int, 2, true> coarseIndices(
+            resources_,
+            makeTempAlloc(AllocType::Other, stream),
+            {queries.getSize(0), nprobe});
+
+    //一级索引查询
+    // Find the `nprobe` closest coarse centroids; we can use int
+    // indices both internally and externally
+    quantizer_->query(
+            queries,
+            nprobe,
+            metric_,
+            metricArg_,
+            coarseDistances,
+            coarseIndices,
+            true);
+
+    if (precomputedCodes_) {
+        FAISS_ASSERT(metric_ == MetricType::METRIC_L2);
+
+        runPQPrecomputedCodes_(
+                queries,
+                coarseDistances,
+                coarseIndices,
+                k,
+                outDistances,
+                outIndices);
+    } else {
+        runPQNoPrecomputedCodes_(
+                queries,
+                coarseDistances,
+                coarseIndices,
+                k,
+                outDistances,
+                outIndices);
+    }
+
+    // If the GPU isn't storing indices (they are on the CPU side), we
+    // need to perform the re-mapping here
+    // FIXME: we might ultimately be calling this function with inputs
+    // from the CPU, these are unnecessary copies
+    if (indicesOptions_ == INDICES_CPU) {
+        HostTensor<Index::idx_t, 2, true> hostOutIndices(outIndices, stream);
+
+        ivfOffsetToUserIndex(
+                hostOutIndices.data(),
+                numLists_,
+                hostOutIndices.getSize(0),
+                hostOutIndices.getSize(1),
+                listOffsetToUserIndex_);
+
+        // Copy back to GPU, since the input to this function is on the
+        // GPU
+        outIndices.copyFrom(hostOutIndices, stream);
+    }
+}
+
 } // namespace gpu
 } // namespace faiss
