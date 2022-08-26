@@ -122,11 +122,20 @@ void GpuIndexIVFPQR::searchImpl_(
 
     // Data is already resident on the GPU
     Tensor<float, 2, true> queries(const_cast<float*>(x), {n, (int)this->d});
-    Tensor<float, 2, true> outDistances(distances, {n, n * k});
-    Tensor<Index::idx_t, 2, true> outLabels(
-            const_cast<Index::idx_t*>(labels), {n, n * k});
+    auto stream = resources_->getDefaultStreamCurrentDevice();
+    DeviceTensor<float, 2, true> tmp_distances(
+            resources_.get(),
+            makeTempAlloc(AllocType::Other, stream),
+            {n, k * kFactor});
+    DeviceTensor<Index::idx_t, 2, true> tmp_labels(
+            resources_.get(),
+            makeTempAlloc(AllocType::Other, stream),
+            {n, k * kFactor});
 
-    index_->query(queries, nprobe,n* k, outDistances, outLabels);
+    Tensor<float, 2, true> outDistances(tmp_distances.data(), {n, kFactor * k});
+    Tensor<Index::idx_t, 2, true> outLabels(
+            const_cast<Index::idx_t*>(tmp_labels.data()), {n, kFactor * k});
+    index_->query(queries, nprobe, kFactor * k, outDistances, outLabels);
 }
 
 } // namespace gpu
