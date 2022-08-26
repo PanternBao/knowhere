@@ -223,11 +223,11 @@ __global__ void pqScanNoPrecomputedMultiPass(
     if (threadIdx.x < limit) {
         LoadCode32<NumSubQuantizers>::load(code32, codeList, threadIdx.x);
     }
-//    if (threadIdx.x ==1) {
-//        printf("\nislocal %d,isConstant %d, __isGlobal %d \n ",__isLocal(&code32), __isConstant(&code32)
-//                ,__isGlobal(&code32));
-//    }
-
+    //    if (threadIdx.x ==1) {
+    //        printf("\nislocal %d,isConstant %d, __isGlobal %d \n
+    //        ",__isLocal(&code32), __isConstant(&code32)
+    //                ,__isGlobal(&code32));
+    //    }
 
     LoadCodeDistances<LookupT, LookupVecT>::load(
             codeDist,
@@ -357,6 +357,7 @@ void runMultiPassTile(
         // The vector interleaved layout implementation
         auto kThreadsPerBlock = 256;
 
+        // w * queryTileSize
         auto grid = dim3(coarseIndices.getSize(1), coarseIndices.getSize(0));
         auto block = dim3(kThreadsPerBlock);
 
@@ -436,14 +437,6 @@ void runMultiPassTile(
         cudaMalloc(                                                         \
                 (void**)&codeDistGlobal,                                    \
                 smem* coarseIndices.getSize(1) * coarseIndices.getSize(0)); \
-        std::cout << "grid: "                                               \
-                  << "\t" << coarseIndices.getSize(1) << "\t"               \
-                  << coarseIndices.getSize(0) << "\n"                       \
-                  << "block: " << kThreadsPerBlock << "\n"                  \
-                  << "global memory:"                                       \
-                  << smem * coarseIndices.getSize(1) *                      \
-                        coarseIndices.getSize(0)                            \
-                  << "\n";                                                  \
                                                                             \
         pqScanNoPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T>     \
                 <<<grid, block, 0, stream>>>(                               \
@@ -731,7 +724,7 @@ void runPQScanMultiPassNoPrecomputed(
     int curStream = 0;
 
     for (int query = 0; query < queries.getSize(0); query += queryTileSize) {
-        std::cout << "step-6-0:" << queryTileSize << "\n";
+        // std::cout << "step-6-0:" << queryTileSize << "\n";
 
         int numQueriesInTile =
                 std::min(queryTileSize, queries.getSize(0) - query);

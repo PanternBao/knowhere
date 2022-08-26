@@ -1,7 +1,7 @@
 #!/bin/bash
 set -x
 export PATH=/usr/local/cuda-11.7/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64
+export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64:$LD_LIBRARY_PATH
 which nvcc
 nvcc -V
 #use mkl

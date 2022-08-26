@@ -91,7 +91,7 @@ int main() {
     index->add(nb, xb);
 
     printf("search\n");
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 1; ++i) {
         idx_t* gt_nns = new idx_t[1 * nq];
         float* trueD = new float[1 * nq];
         faiss::IndexFlatL2 gt_index(d);

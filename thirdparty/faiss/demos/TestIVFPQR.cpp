@@ -21,8 +21,8 @@ int main() {
     const int nb = 100000; // database size
     const int nq = 500;     // nb of queries
     const int nlist = 32;
-    const int nprobe = 19;
-    const int k = 1000;
+    const int nprobe = 1;
+    const int k = 1;
     const int m = 4;
     std::mt19937 rng;
     std::uniform_real_distribution<> distrib;
