@@ -27,10 +27,10 @@ int main() {
     const int d = 128;      // dimension
     const int nb = 1000000; // database size
     const int nq = 500;     // nb of queries
-    const int nlist = 102;
-    const int nprobe = 100;
-    const int k = 1000;
-    const int m = 64;
+    const int nlist = 8;
+    const int nprobe = 8;
+    const int k = 1;
+    const int m = 128;
     std::mt19937 rng;
     std::uniform_real_distribution<> distrib;
 
@@ -70,7 +70,7 @@ int main() {
 
     faiss::gpu::GpuClonerOptions gpu_config;
     gpu_config.useFloat16 = true;
-    gpu_config.usePrecomputed = false;
+    gpu_config.usePrecomputed = true;
     gpu_config.interleavedLayout = false;
     faiss::gpu::StandardGpuResources res; // use a single GPU
     index_cpu.nprobe = nprobe;
@@ -94,9 +94,9 @@ int main() {
     for (int i = 0; i < 1; ++i) {
         idx_t* gt_nns = new idx_t[1 * nq];
         float* trueD = new float[1 * nq];
-        faiss::IndexFlatL2 gt_index(d);
-        gt_index.add(nb, xb);
-        gt_index.search(nq, xq, 1, trueD, gt_nns);
+//        faiss::IndexFlatL2 gt_index(d);
+//        gt_index.add(nb, xb);
+//        gt_index.search(nq, xq, 1, trueD, gt_nns);
         std::cout << "\n";
         //    for (int i = 0; i < 1 * nq; ++i) {
         //        std::cout << gtNNS[i] << "\t";

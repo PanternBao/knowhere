@@ -42,6 +42,29 @@ GpuIndexIVFPQ::GpuIndexIVFPQ(
 
 GpuIndexIVFPQ::GpuIndexIVFPQ(
         GpuResourcesProvider* provider,
+        const faiss::IndexIVFPQ* index,
+        GpuIndexIVFPQConfig config,
+        bool needInit)
+        : GpuIndexIVF(
+                  provider,
+                  index->d,
+                  index->metric_type,
+                  index->metric_arg,
+                  index->nlist,
+                  config),
+          pq(index->pq),
+          ivfpqConfig_(config),
+          usePrecomputedTables_(config.usePrecomputedTables),
+          subQuantizers_(0),
+          bitsPerCode_(0),
+          reserveMemoryVecs_(0) {
+    if (needInit) {
+        copyFrom(index);
+    }
+}
+
+GpuIndexIVFPQ::GpuIndexIVFPQ(
+        GpuResourcesProvider* provider,
         int dims,
         int nlist,
         int subQuantizers,
@@ -109,11 +132,13 @@ void GpuIndexIVFPQ::copyFrom(const faiss::IndexIVFPQ* index) {
             (float*)index->pq.centroids.data(),
             ivfpqConfig_.indicesOptions,
             config_.memorySpace));
+    printf("index reset ok\n");
     // Doesn't make sense to reserve memory here
     index_->setPrecomputedCodes(usePrecomputedTables_);
 
     // Copy all of the IVF data
     index_->copyInvertedListsFrom(index->invlists);
+    printf("index prepare ok \n");
 }
 
 void GpuIndexIVFPQ::copyTo(faiss::IndexIVFPQ* index) const {
@@ -474,17 +499,17 @@ void GpuIndexIVFPQ::verifySettings_() const {
             lookupTableSize * subQuantizers_ * utils::pow2(bitsPerCode_);
     size_t smemPerBlock = getMaxSharedMemPerBlock(config_.device);
 
-//    FAISS_THROW_IF_NOT_FMT(
-//            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
-//            "Device %d has %zu bytes of shared memory, while "
-//            "%d bits per code and %d sub-quantizers requires %zu "
-//            "bytes. Consider useFloat16LookupTables and/or "
-//            "reduce parameters",
-//            config_.device,
-//            smemPerBlock,
-//            bitsPerCode_,
-//            subQuantizers_,
-//            requiredSmemSize);
+    //    FAISS_THROW_IF_NOT_FMT(
+    //            requiredSmemSize <= getMaxSharedMemPerBlock(config_.device),
+    //            "Device %d has %zu bytes of shared memory, while "
+    //            "%d bits per code and %d sub-quantizers requires %zu "
+    //            "bytes. Consider useFloat16LookupTables and/or "
+    //            "reduce parameters",
+    //            config_.device,
+    //            smemPerBlock,
+    //            bitsPerCode_,
+    //            subQuantizers_,
+    //            requiredSmemSize);
 }
 
 } // namespace gpu

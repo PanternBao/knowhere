@@ -20,8 +20,10 @@ namespace gpu {
 GpuIndexIVFPQR::GpuIndexIVFPQR(
         GpuResourcesProvider* provider,
         const faiss::IndexIVFPQR* index,
+        int debug_flag,
         GpuIndexIVFPQConfig config)
-        : GpuIndexIVFPQ(provider, index, config) {
+        : GpuIndexIVFPQ(provider, index, config, false),
+          debug_flag(debug_flag) {
     copyFrom(index);
 }
 
@@ -50,6 +52,7 @@ GpuIndexIVFPQR::GpuIndexIVFPQR(
 GpuIndexIVFPQR::~GpuIndexIVFPQR() {}
 
 void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
+    cout << "init ivfpqr" << endl;
     DeviceScope scope(config_.device);
 
     GpuIndexIVF::copyFrom(index);
@@ -96,7 +99,12 @@ void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
             (float*)index->refine_pq.centroids.data(),
             ivfpqConfig_.indicesOptions,
             config_.memorySpace,
-            index->refine_codes));
+            index->refine_codes,
+            debug_flag));
+    ((IVFPQR*)index_.get())->kFactor = index->k_factor;
+    printf("init ok %f,%f",
+           index->k_factor,
+           index->refine_pq.centroids.data()[0]);
     // Doesn't make sense to reserve memory here
     index_->setPrecomputedCodes(usePrecomputedTables_);
 
@@ -108,7 +116,6 @@ void GpuIndexIVFPQR::verifySettings_() const {
     GpuIndexIVFPQ::verifySettings_();
     // todo:custom verifySettings
 }
-
 void GpuIndexIVFPQR::searchImpl_(
         int n,
         const float* x,
@@ -122,20 +129,11 @@ void GpuIndexIVFPQR::searchImpl_(
 
     // Data is already resident on the GPU
     Tensor<float, 2, true> queries(const_cast<float*>(x), {n, (int)this->d});
-    auto stream = resources_->getDefaultStreamCurrentDevice();
-    DeviceTensor<float, 2, true> tmp_distances(
-            resources_.get(),
-            makeTempAlloc(AllocType::Other, stream),
-            {n, k * kFactor});
-    DeviceTensor<Index::idx_t, 2, true> tmp_labels(
-            resources_.get(),
-            makeTempAlloc(AllocType::Other, stream),
-            {n, k * kFactor});
-
-    Tensor<float, 2, true> outDistances(tmp_distances.data(), {n, kFactor * k});
+    Tensor<float, 2, true> outDistances(distances, {n, k});
     Tensor<Index::idx_t, 2, true> outLabels(
-            const_cast<Index::idx_t*>(tmp_labels.data()), {n, kFactor * k});
-    index_->query(queries, nprobe, kFactor * k, outDistances, outLabels);
+            const_cast<Index::idx_t*>(labels), {n, k});
+
+    ((IVFPQR*)index_.get())->query(queries, nprobe, k, outDistances, outLabels);
 }
 
 } // namespace gpu

@@ -429,26 +429,28 @@ __global__ void pqScanPrecomputedMultiPass3(
         int* listLengths,
         Tensor<int, 2, true> prefixSumOffsets,
         Tensor<float, 1, true> distance) {
-    extern __shared__ char* tmpShared[];
+    __shared__ char* tmpShared;
 
     // precomputed term 2 + 3 storage
     // (sub q)(code id)
     int blockId = blockIdx.y * gridDim.x + blockIdx.x;
     // printf("blockid %d,threadId %d,\n", blockId, threadIdx.x);
+    char* data = NULL;
     if (threadIdx.x == 0) {
-        char* data = (char*)malloc(smem);
-        tmpShared[0] = data;
+        data = (char*)malloc(smem);
+
+        tmpShared = data;
         if (data == NULL) {
+            printf("illegal memory！！！\n");
             asm("trap;");
             return;
         }
-        // printf("malloc\n");
-        // smemTerm23 = (char*)malloc(smem);
+        // printf("malloc blockId %d\n", blockId);
     }
     __syncthreads();
     //    auto block = cooperative_groups::this_thread_block();
     //    block.sync();
-    char* data = tmpShared[0];
+    data = tmpShared;
     LookupT* term23 = (LookupT*)data;
 
     // Each block handles a single query
@@ -537,6 +539,7 @@ __global__ void pqScanPrecomputedMultiPass3(
     }
     __syncthreads();
     if (threadIdx.x == 0) {
+        // printf("free blockId %d\n", blockId);
         free(data);
     }
     return;
@@ -580,8 +583,8 @@ void runMultiPassTile(
 
     // The vector interleaved layout implementation
     if (interleavedCodeLayout) {
-        std::cout << "interleave"
-                  << "\n";
+        //        std::cout << "interleave"
+        //                  << "\n";
         auto kThreadsPerBlock = 256;
 
         auto grid = dim3(
@@ -660,14 +663,39 @@ void runMultiPassTile(
 
         smem *= numSubQuantizers * numSubQuantizerCodes;
 
-
         // FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
+        //        size_t originLimit;
+        //        cudaDeviceGetLimit(&originLimit, cudaLimitMallocHeapSize);
+        //        size_t gpuLimit = 196 * smem;
+        //        if (originLimit != gpuLimit) {
+        //            // Note: Setting cudaLimitMallocHeapSize must be performed
+        //            before
+        //            // launching any kernel that uses the malloc() or free()
+        //            device
+        //            // system calls, otherwise cudaErrorInvalidValue will be
+        //            returned. printf("set cuda limit %ld,%ld\n",
+        //                   originLimit,
+        //                   gpuLimit); //不宜过大，是在启动时就分配的空间
+        //            cudaDeviceSetLimit(cudaLimitMallocHeapSize, gpuLimit);
+        //            CUDA_TEST_ERROR();
+        //            cudaDeviceGetLimit(&originLimit, cudaLimitMallocHeapSize);
+        //            printf("get cuda limit %ld\n", originLimit);
+        //        }
 
 #define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                      \
     do {                                                                   \
         auto precompTerm2T = precompTerm2.toTensor<LOOKUP_T>();            \
         auto precompTerm3T = precompTerm3.toTensor<LOOKUP_T>();            \
-        if (false) {                                                       \
+        if (true) {                                                        \
+            if (NUM_SUB_Q == 128) {                                        \
+                cudaFuncSetAttribute(                                      \
+                        pqScanPrecomputedMultiPass<                        \
+                                NUM_SUB_Q,                                 \
+                                LOOKUP_T,                                  \
+                                LOOKUP_VEC_T>,                             \
+                        cudaFuncAttributeMaxDynamicSharedMemorySize,       \
+                        64 * 1024);                                        \
+            }                                                              \
             /*printf("use v1\n");   */                                     \
             pqScanPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T>  \
                     <<<grid, block, smem, stream>>>(                       \
@@ -692,7 +720,7 @@ void runMultiPassTile(
                       << "\n";*/                                           \
                                                                            \
             pqScanPrecomputedMultiPass3<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
-                    <<<grid, block, sizeof(char*), stream>>>(              \
+                    <<<grid, block, 0, stream>>>(                          \
                             smem,                                          \
                             queries,                                       \
                             precompTerm1,                                  \
@@ -881,6 +909,7 @@ void runPQScanMultiPassPrecomputed(
     } else if (queryTileSize > kMaxQueryTileSize) {
         queryTileSize = kMaxQueryTileSize;
     }
+    printf("queryTileSize %d\n", queryTileSize);
 
     // FIXME: we should adjust queryTileSize to deal with this, since
     // indexing is in int32

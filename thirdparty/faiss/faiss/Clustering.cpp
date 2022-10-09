@@ -444,12 +444,12 @@ void Clustering::train_encoded(
                 *this, nx, x, line_size, weights, &x_new, &weights_new);
         if (train_type == 1) {
             sw2.stop();
-            printf("train q1 subsample time %f\n",sw2.getElapsedTime());;
+            //printf("train q1 subsample time %f\n",sw2.getElapsedTime());;
             indexIVF_stats.train_q1_time.sub(sw2);
         } else if (train_type == 2) {
 
             sw2.stop();
-            printf("train q2 subsample time %f\n",sw2.getElapsedTime());;
+            //printf("train q2 subsample time %f\n",sw2.getElapsedTime());;
             indexIVF_stats.train_q2_time.sub(sw2);
         }
         del1.reset(x_new);

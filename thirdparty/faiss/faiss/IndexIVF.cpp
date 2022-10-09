@@ -356,6 +356,7 @@ void IndexIVF::set_direct_map_type(DirectMap::Type type) {
 void IndexIVF::set_thread(int threads) {
     printf("default threads %d\n", omp_get_max_threads());
     omp_set_num_threads(threads);
+    omp_set_dynamic(0);
     printf("current threads %d\n", omp_get_max_threads());
 }
 

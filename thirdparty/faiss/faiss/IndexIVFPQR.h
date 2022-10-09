@@ -11,6 +11,7 @@
 
 #include <vector>
 
+#include <faiss/CustomVariable.h>
 #include <faiss/IndexIVFPQ.h>
 
 namespace faiss {
@@ -67,6 +68,9 @@ struct IndexIVFPQR : IndexIVFPQ {
             const BitsetView bitset = nullptr) const override;
 
     IndexIVFPQR();
+
+   public:
+    int debug_flag;
 };
 
 } // namespace faiss

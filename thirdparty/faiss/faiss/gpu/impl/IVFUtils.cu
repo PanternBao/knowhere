@@ -57,7 +57,7 @@ void runCalcListOffsets(
 
     auto grid = dim3(numBlocks);
     auto block = dim3(numThreads);
-    //计算prefixSumOffsets
+    //由于 listLength 不同，计算prefixSumOffsets
     getResultLengths<<<grid, block, 0, stream>>>(
             topQueryToCentroid,
             listLengths.data().get(),
@@ -71,7 +71,7 @@ void runCalcListOffsets(
     // one, so it won't call cudaMalloc/Free if we size it sufficiently
     GpuResourcesThrustAllocator alloc(
             res, stream, thrustMem.data(), thrustMem.getSizeInBytes());
-    //https://thrust.github.io/doc/group__prefixsums_gafb24ad76101263038b0acaddc094d70a.html#gafb24ad76101263038b0acaddc094d70a
+    // https://thrust.github.io/doc/group__prefixsums_gafb24ad76101263038b0acaddc094d70a.html#gafb24ad76101263038b0acaddc094d70a
     //对数据prefixSumOffsets进行累加
     thrust::inclusive_scan(
             thrust::cuda::par(alloc).on(stream),

@@ -7,10 +7,11 @@
 
 #pragma once
 
-
+#include <faiss/CustomVariable.h>
 #include <faiss/gpu/impl/IVFPQ.cuh>
 #include <faiss/gpu/impl/RefinePQ.cuh>
-
+#include <iostream>
+using namespace std;
 namespace faiss {
 namespace gpu {
 
@@ -31,20 +32,25 @@ class IVFPQR : public IVFPQ {
            float* refinePqCentroidData,
            IndicesOptions indicesOptions,
            MemorySpace space,
-           std::vector<uint8_t> refineCodes);
+           std::vector<uint8_t> refineCodes,
+           int debug_flag);
 
     ~IVFPQR() override;
 
     void setPrecomputedCodes(bool enable);
-    void query(
+    virtual void query(
             Tensor<float, 2, true>& queries,
             int nprobe,
-            int k,
+            int topK,
             Tensor<float, 2, true>& outDistances,
             Tensor<Index::idx_t, 2, true>& outIndices);
+
    private:
     RefinePQ refinePQ;
 
+   public:
+    float kFactor = 4;
+    int debug_flag = 0;
 };
 
 } // namespace gpu

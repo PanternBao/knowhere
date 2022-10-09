@@ -7,8 +7,8 @@
 
 #pragma once
 
+#include <faiss/CustomVariable.h>
 #include <faiss/gpu/impl/IVFPQ.cuh>
-
 namespace faiss {
 namespace gpu {
 
@@ -29,15 +29,21 @@ class RefinePQ : public IVFPQ {
             float* pqCentroidData,
             IndicesOptions indicesOptions,
             MemorySpace space,
-            std::vector<uint8_t> refineCodes);
+            std::vector<uint8_t> refineCodes,
+            int debug_flag);
 
     ~RefinePQ() override;
     void setPQCentroids_(float* data);
     void setRefineCodes_(std::vector<uint8_t> refineCodes);
+    void calculateResidualVector2(
+            Tensor<Index::idx_t, 2, true> outIndices,
+            Tensor<float, 3, true> residual2);
 
-   private:
+   public: // todo:change to  private
     DeviceTensor<uint8_t, 2, true> refineCodes_;
+    Tensor<float, 3, true> pqCentroidsMiddleCode2_;
     int nb;
+    int debug_flag;
     // std::vector<uint8_t> refineCodes_;
     //    /// Number of sub-quantizers per vector
     //    const int numSubQuantizers_;

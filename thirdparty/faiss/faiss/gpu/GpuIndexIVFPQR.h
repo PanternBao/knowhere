@@ -28,6 +28,7 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
     GpuIndexIVFPQR(
             GpuResourcesProvider* provider,
             const faiss::IndexIVFPQR* index,
+            int debug_flag,
             GpuIndexIVFPQConfig config = GpuIndexIVFPQConfig());
 
     /// Construct an empty index
@@ -44,7 +45,6 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
     void copyFrom(const faiss::IndexIVFPQR* index);
     void verifySettings_() const;
 
-
    protected:
     void searchImpl_(
             int n,
@@ -52,8 +52,11 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
             int k,
             float* distances,
             Index::idx_t* labels) const;
-    std::unique_ptr<IVFPQR> refine_pq;
-    int kFactor = 4;
+    // std::unique_ptr<RefinePQ> refine_pq;
+    //    int kFactor = 4;
+
+   public:
+    int debug_flag;
 };
 
 } // namespace gpu

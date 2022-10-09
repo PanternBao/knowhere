@@ -65,23 +65,40 @@ vector<T> read_vector_to_file(const char* path, vector<T>& newVector) {
     return newVector;
 }
 
-IndexIVFPQR* pqr_index_cpu=NULL;
-IndexIVFPQ* pq_index_cpu=NULL;
+IndexIVFPQR* pqr_index_cpu = NULL;
+IndexIVFPQ* pq_index_cpu = NULL;
 const char* dataFileName = "pqr-data.dump";
 const char* nqFileName = "pqr-nq.dump";
 const char* pqDataFileName = "pq-data.dump";
 const char* groudTruthFileName = "pqr-groudtruth.dump";
-const int d = 128;     // dimension
-const int nb = 100000; // database size
-const int nq = 500;    // nb of queries
-const int nlist = 16;
-const int nprobe = 1;
-const int k = 10;
-const int m = 16;
+const int d = 128;      // dimension
+const int nb = 1000000; // database size
+const int nq = 8192;      // nb of queries
+const int nlist = 8192;
+const int nprobe = 156;
+const int topK = 100;
+const int pq_m = 128;
+const int pq_refine_m = 128; // default: 2*pq_m;
+const int k_factor = 4;
+const int thread_num = 32;
+const int debug_flag = 0;
+bool needTrain = false;
+// const int d = 128;      // dimension
+// const int nb = 1000000; // database size
+// const int nq = 1000;    // nb of queries
+// const int nlist = 2000;
+// const int nprobe = 10;
+// const int topK = 10;
+// const int pq_m = 32;
+// const int k_factor = 4;
+// const int thread_num = 8;
+// const int debug_flag = 0;
+
+bool disableIVFPQR = true;
 vector<float> xq(d* nq);
 vector<float> xb(d* nb);
-Index* gt_index=NULL;
-Index* current_index =NULL;
+Index* gt_index = NULL;
+Index* current_index = NULL;
 idx_t* gt_nns = new idx_t[1 * nq];
 float* trueD = new float[1 * nq];
 void searchInner();
@@ -89,22 +106,30 @@ void search_gpu();
 void search_cpu();
 void calculateData();
 int main() {
-    setbuf(stdout, NULL);
+    // setbuf(stdout, NULL);
     printf("start GPUIVFPQR\n");
-    bool isFirst = !is_file_exist(dataFileName);
+    mt19937 rng;
+    uniform_real_distribution<> distrib;
+    for (int i = 0; i < nq; i++) {
+        for (int j = 0; j < d; j++)
+            xq[d * i + j] = distrib(rng);
+        xq[d * i] += i / 1000.;
+    }
+    bool isFirst = !is_file_exist(pqDataFileName);
     IndexFlatL2 quantizer1(d);
     IndexFlatL2 quantizer2(d);
-    if (isFirst) {
+    if (needTrain || isFirst) {
         calculateData();
 
-        {
-            // bytes per vector
-            pqr_index_cpu =
-                    new IndexIVFPQR(&quantizer1, d, nlist, m, 8, 2 * m, 8);
+        // bytes per vector
+        pqr_index_cpu =
+                new IndexIVFPQR(&quantizer1, d, nlist, pq_m, 8, pq_refine_m, 8);
 
-            //    int table = index->use_precomputed_table;
-            //    index->set_thread(128);
-            pqr_index_cpu->nprobe = nprobe;
+        //    int table = index->use_precomputed_table;
+        //    index->set_thread(128);
+        pqr_index_cpu->nprobe = nprobe;
+        pqr_index_cpu->k_factor = k_factor;
+        if (!disableIVFPQR) {
             //    index->use_precomputed_table = 1;
             printf("train\n");
             pqr_index_cpu->train(nb, xb.data());
@@ -116,13 +141,13 @@ int main() {
         }
         {
             // bytes per vector
-            pq_index_cpu = new IndexIVFPQ(&quantizer2, d, nlist, m, 8);
+            pq_index_cpu = new IndexIVFPQ(&quantizer2, d, nlist, pq_m, 8);
 
             //    int table = index->use_precomputed_table;
             //    index->set_thread(128);
             pq_index_cpu->nprobe = nprobe;
             //    index->use_precomputed_table = 1;
-            printf("train\n");
+            printf("train pq index\n");
             pq_index_cpu->train(nb, xb.data());
             indexIVF_stats.reset();
             printf("add\n");
@@ -138,15 +163,29 @@ int main() {
         fprintf(stderr, "write done\n");
     } else {
         printf("read from existing file\n");
-        read_vector_to_file(nqFileName, xq);
+        // read_vector_to_file(nqFileName, xq);
         gt_index = read_index(groudTruthFileName);
-        pqr_index_cpu = (IndexIVFPQR*)read_index(dataFileName);
+        if (!disableIVFPQR) {
+            pqr_index_cpu = (IndexIVFPQR*)read_index(dataFileName);
+        } else {
+            pqr_index_cpu =
+                    new IndexIVFPQR(&quantizer1, d, nlist, pq_m, 8, pq_m, 8);
+        }
+
         pq_index_cpu = (IndexIVFPQ*)read_index(pqDataFileName);
     }
+    if (thread_num != -1) {
+        pqr_index_cpu->set_thread(thread_num);
+        pq_index_cpu->set_thread(thread_num);
+    }
+    pq_index_cpu->nprobe = nprobe;
+    pqr_index_cpu->nprobe = nprobe;
+    pqr_index_cpu->k_factor = k_factor;
+    pqr_index_cpu->debug_flag = debug_flag;
 
     gt_index->search(nq, xq.data(), 1, trueD, gt_nns);
     fprintf(stderr, "calculate gt_nns done\n");
-    search_cpu();
+    // search_cpu();
     search_gpu();
 
     // std::cout << ss.str();
@@ -156,7 +195,6 @@ int main() {
     delete gt_index;
     delete pqr_index_cpu;
     delete pq_index_cpu;
-
 
     return 0;
 }
@@ -176,26 +214,52 @@ void calculateData() {
     }
 }
 void search_gpu() {
+    //    int count = 10;
+    //    gpu::StandardGpuResources* resArr[count];
+    //    gpu::GpuIndexIVFPQ* index_gpus[count];
+    //    gpu::GpuIndexIVFPQConfig config;
+    //    for (int i = 0; i < count; ++i) {
+    //        resArr[i] = new gpu::StandardGpuResources();
+    //        index_gpus[i] = new gpu::GpuIndexIVFPQ(resArr[i], pq_index_cpu,
+    //        config);
+    //    }
+
     gpu::StandardGpuResources res; // use a single GPU
-//    gpu::GpuIndexIVFPQ index_gpu_1(&res, pq_index_cpu);
-//    indexs = &index_gpu_1;
-//    printf("==============test_pq_gpu==============\n");
-//    searchInner();
-//    printf("==============test_pq_gpu==============\n");
 
-    gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu);
-    current_index = &index_gpu_2;
-    printf("==============test_gpu==============\n");
+    gpu::GpuIndexIVFPQConfig config;
+    config.useFloat16LookupTables = true;
+    config.usePrecomputedTables = true;
+    config.interleavedLayout = false;
+    // config.indicesOptions = gpu::IndicesOptions::INDICES_CPU;
+    gpu::GpuIndexIVFPQ index_gpu_1(&res, pq_index_cpu, config);
+    current_index = &index_gpu_1;
+    printf("==============test_pq_gpu==============\n");
     searchInner();
-    printf("==============test_gpu==============\n");
+    printf("==============test_pq_gpu==============\n");
+    //        config.useFloat16LookupTables = true;
+    //        config.usePrecomputedTables = false;
+    //        config.indicesOptions = gpu::IndicesOptions::INDICES_CPU; // must!
+    //        gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu, debug_flag,
+    //        config); current_index = &index_gpu_2;
+    //        printf("==============test_gpu==============\n");
+    //        searchInner();
+    //        printf("==============test_gpu==============\n");
 
+    //    for (auto& i : resArr) {
+    //        delete i;
+    //    }
+    //    for (auto& i : index_gpus) {
+    //        delete i;
+    //    }
 }
 
 void search_cpu() {
-    current_index = pqr_index_cpu;
-    printf("==============test_pqr_cpu==============\n");
-    searchInner();
-    printf("==============test_pqr_cpu==============\n");
+    if (!disableIVFPQR) {
+        current_index = pqr_index_cpu;
+        printf("==============test_pqr_cpu==============\n");
+        searchInner();
+        printf("==============test_pqr_cpu==============\n");
+    }
     current_index = pq_index_cpu;
     printf("==============test_pq_cpu==============\n");
     searchInner();
@@ -211,23 +275,37 @@ void searchInner() {
         //    std::cout << "\n";
         {
             // search xq
-            idx_t* nns = new idx_t[k * nq];
-            float* D = new float[k * nq];
+            idx_t* nns = new idx_t[topK * nq];
+            float* D = new float[topK * nq];
             StopWatch sw = StopWatch::start();
-
-            current_index->search(nq, xq.data(), k, D, nns);
-            //        for (int i = 0; i < k * nq; ++i) {
+            printf("begin search\n");
+            current_index->search(nq, xq.data(), topK, D, nns);
+            //        for (int i = 0; i < topK * nq; ++i) {
             //            std::cout << I[i] << "\t";
             //        }
 
-            int n_ok = 0;
-            for (int q = 0; q < nq; q++) {
-                for (int i = 0; i < k; i++)
-                    if (nns[q * k + i] == gt_nns[q])
-                        n_ok++;
-            }
+            sw.stop();
 
-            cout << "\n";
+            int n_ok = 0;
+            if (debug_flag & PRINT_MATCH_QUERY) {
+                printf("match query\n");
+            }
+            for (int q = 0; q < nq; q++) {
+                for (int j = 0; j < topK; j++)
+                    if (nns[q * topK + j] == gt_nns[q]) {
+                        if (debug_flag & PRINT_MATCH_QUERY) {
+                            printf("%d,%d,%ld,%f\t",
+                                   q,
+                                   j,
+                                   nns[q * topK + j],
+                                   D[q * topK + j]);
+                        }
+                        n_ok++;
+                        break;
+                    }
+            }
+            cout << "take " << sw.getElapsedTime() << "ms" << endl;
+
             cout << n_ok << "\t" << nq << "\n";
             delete[] nns;
             delete[] D;

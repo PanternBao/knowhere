@@ -63,6 +63,12 @@ class GpuIndexIVFPQ : public GpuIndexIVF {
             const faiss::IndexIVFPQ* index,
             GpuIndexIVFPQConfig config = GpuIndexIVFPQConfig());
 
+    GpuIndexIVFPQ(
+            GpuResourcesProvider* provider,
+            const faiss::IndexIVFPQ* index,
+            GpuIndexIVFPQConfig config,
+            bool needInit);
+
     /// Construct an empty index
     GpuIndexIVFPQ(
             GpuResourcesProvider* provider,

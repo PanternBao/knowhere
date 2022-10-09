@@ -17,14 +17,14 @@ using idx_t = faiss::Index::idx_t;
 int main() {
     setbuf(stdout, NULL);
     printf("start\n");
-    const int d = 128;      // dimension
+    const int d = 128;     // dimension
     const int nb = 100000; // database size
-    const int nq = 500;     // nb of queries
+    const int nq = 500;    // nb of queries
     const int nlist = 32;
     const int nprobe = 1;
     const int k = 1;
     const int m = 4;
-    std::mt19937 rng;
+    std::mt19937 rng(1);
     std::uniform_real_distribution<> distrib;
 
     float* xb = new float[d * nb];
@@ -59,8 +59,8 @@ int main() {
     //        return 0;
     //    }
 
-    faiss::IndexIVFPQR index_cpu(&quantizer, d, nlist, m, 8,m*2,8);
-
+    faiss::IndexIVFPQR index_cpu(&quantizer, d, nlist, m, 8, m * 2, 8);
+    index_cpu.set_thread(1);
     index_cpu.nprobe = nprobe;
     faiss::Index* index = &index_cpu;
     //    int table = index->use_precomputed_table;
@@ -69,6 +69,7 @@ int main() {
     //    index->use_precomputed_table = 1;
     printf("train\n");
     index->train(nb, xb);
+    index_cpu.set_thread(10);
 
     //    printf("train_time%f\n",
     //    faiss::indexIVF_stats.train_q1_time.getValue()); return 0;
@@ -102,8 +103,10 @@ int main() {
             int n_ok = 0;
             for (int q = 0; q < nq; q++) {
                 for (int i = 0; i < k; i++)
-                    if (nns[q * k + i] == gt_nns[q])
+                    if (nns[q * k + i] == gt_nns[q]) {
                         n_ok++;
+                        break;
+                    }
             }
 
             std::cout << "\n";

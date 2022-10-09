@@ -188,7 +188,7 @@ class IVFBase {
     bool interleavedLayout_;
 
     /// How are user indices stored on the GPU?
-    const IndicesOptions indicesOptions_;
+    IndicesOptions indicesOptions_;
 
     /// What memory space our inverted list storage is in
     const MemorySpace space_;

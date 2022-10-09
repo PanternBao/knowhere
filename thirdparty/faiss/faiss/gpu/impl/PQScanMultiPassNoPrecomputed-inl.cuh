@@ -352,8 +352,8 @@ void runMultiPassTile(
             stream);
 
     if (interleavedCodeLayout) {
-        std::cout << "interleave"
-                  << "\n";
+        //        std::cout << "interleave"
+        //                  << "\n";
         // The vector interleaved layout implementation
         auto kThreadsPerBlock = 256;
 
@@ -545,16 +545,16 @@ void runMultiPassTile(
     auto flatHeapIndices = heapIndices.downcastInner<2>();
 
     runPass2SelectLists(
-            flatHeapDistances,
-            flatHeapIndices,
-            listIndices,
-            indicesOptions,
-            prefixSumOffsets,
-            coarseIndices,
+            flatHeapDistances, // nq*pass2Chunks*k
+            flatHeapIndices,   // nq*pass2Chunks*k
+            listIndices,       // deviceListIndexPointers_
+            indicesOptions,    // cpu
+            prefixSumOffsets,  // distance的位置
+            coarseIndices,     // 粗聚类的的索引id, nq*w
             k,
-            !l2Distance, // L2 distance chooses smallest
-            outDistances,
-            outIndices,
+            !l2Distance,  // L2 distance chooses smallest
+            outDistances, // nq*k
+            outIndices,   // nq*k
             stream);
 }
 
@@ -623,9 +623,9 @@ void runPQScanMultiPassNoPrecomputed(
     int queryTileSize = (int)(sizeAvailable / sizePerQuery);
 
     if (queryTileSize < kMinQueryTileSize) {
-        queryTileSize = kMinQueryTileSize;
+        queryTileSize = kMinQueryTileSize; // 8
     } else if (queryTileSize > kMaxQueryTileSize) {
-        queryTileSize = kMaxQueryTileSize;
+        queryTileSize = kMaxQueryTileSize; // 128
     }
 
     // FIXME: we should adjust queryTileSize to deal with this, since
