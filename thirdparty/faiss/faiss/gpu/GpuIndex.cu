@@ -66,15 +66,16 @@ GpuIndex::GpuIndex(
 
     FAISS_ASSERT((bool)resources_);
     resources_->initializeForDevice(config_.device);
-//    size_t originLimit;
-//    cudaDeviceGetLimit(&originLimit, cudaLimitMallocHeapSize);
-//    long gpuLimit = 10240; // 1G  is very sufficient
-//    if (originLimit != gpuLimit) {
-//        // Note: Setting cudaLimitMallocHeapSize must be performed before
-//        // launching any kernel that uses the malloc() or free() device
-//        // system calls, otherwise cudaErrorInvalidValue will be returned.
-//        cudaDeviceSetLimit(cudaLimitMallocHeapSize, gpuLimit);
-//    }
+    //todo: 1G too big
+    size_t originLimit;
+    cudaDeviceGetLimit(&originLimit, cudaLimitMallocHeapSize);
+    long gpuLimit = 1024*1024*1024; // 1G  is very sufficient
+    if (originLimit != gpuLimit) {
+        // Note: Setting cudaLimitMallocHeapSize must be performed before
+        // launching any kernel that uses the malloc() or free() device
+        // system calls, otherwise cudaErrorInvalidValue will be returned.
+        cudaDeviceSetLimit(cudaLimitMallocHeapSize, gpuLimit);
+    }
 }
 
 int GpuIndex::getDevice() const {

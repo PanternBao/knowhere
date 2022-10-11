@@ -312,7 +312,7 @@ __global__ void pqScanPrecomputedMultiPass(
 }
 
 template <int NumSubQuantizers, typename LookupT, typename LookupVecT>
-__global__ void pqScanPrecomputedMultiPass2(
+__global__ void pqScanPrecomputedMultiPassUseGlobalMemoryV1(
         char* smemTerm23,
         long smem,
         Tensor<float, 2, true> queries,
@@ -418,7 +418,7 @@ __global__ void pqScanPrecomputedMultiPass2(
 }
 
 template <int NumSubQuantizers, typename LookupT, typename LookupVecT>
-__global__ void pqScanPrecomputedMultiPass3(
+__global__ void pqScanPrecomputedMultiPassUseGlobalMemoryV2(
         long smem,
         Tensor<float, 2, true> queries,
         Tensor<float, 2, true> precompTerm1,
@@ -431,27 +431,22 @@ __global__ void pqScanPrecomputedMultiPass3(
         Tensor<float, 1, true> distance) {
     __shared__ char* tmpShared;
 
-    // precomputed term 2 + 3 storage
-    // (sub q)(code id)
-    int blockId = blockIdx.y * gridDim.x + blockIdx.x;
     // printf("blockid %d,threadId %d,\n", blockId, threadIdx.x);
-    char* data = NULL;
+    char* mallocArray = NULL;
     if (threadIdx.x == 0) {
-        data = (char*)malloc(smem);
+        mallocArray = (char*)malloc(smem);
 
-        tmpShared = data;
-        if (data == NULL) {
+        tmpShared = mallocArray;
+        if (mallocArray == NULL) {
             printf("illegal memory！！！\n");
             asm("trap;");
             return;
         }
-        // printf("malloc blockId %d\n", blockId);
     }
     __syncthreads();
-    //    auto block = cooperative_groups::this_thread_block();
-    //    block.sync();
-    data = tmpShared;
-    LookupT* term23 = (LookupT*)data;
+
+    mallocArray = tmpShared;
+    LookupT* term23 = (LookupT*)mallocArray;
 
     // Each block handles a single query
     auto queryId = blockIdx.y;
@@ -540,7 +535,7 @@ __global__ void pqScanPrecomputedMultiPass3(
     __syncthreads();
     if (threadIdx.x == 0) {
         // printf("free blockId %d\n", blockId);
-        free(data);
+        free(mallocArray);
     }
     return;
 }
@@ -682,56 +677,56 @@ void runMultiPassTile(
         //            printf("get cuda limit %ld\n", originLimit);
         //        }
 
-#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                      \
-    do {                                                                   \
-        auto precompTerm2T = precompTerm2.toTensor<LOOKUP_T>();            \
-        auto precompTerm3T = precompTerm3.toTensor<LOOKUP_T>();            \
-        if (true) {                                                        \
-            if (NUM_SUB_Q == 128) {                                        \
-                cudaFuncSetAttribute(                                      \
-                        pqScanPrecomputedMultiPass<                        \
-                                NUM_SUB_Q,                                 \
-                                LOOKUP_T,                                  \
-                                LOOKUP_VEC_T>,                             \
-                        cudaFuncAttributeMaxDynamicSharedMemorySize,       \
-                        64 * 1024);                                        \
-            }                                                              \
-            /*printf("use v1\n");   */                                     \
-            pqScanPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T>  \
-                    <<<grid, block, smem, stream>>>(                       \
-                            queries,                                       \
-                            precompTerm1,                                  \
-                            precompTerm2T,                                 \
-                            precompTerm3T,                                 \
-                            topQueryToCentroid,                            \
-                            listCodes.data().get(),                        \
-                            listLengths.data().get(),                      \
-                            prefixSumOffsets,                              \
-                            allDistances);                                 \
-        } else {                                                           \
-            /*printf("use v2\n");                                          \
-            std::cout << "grid: "                                          \
-                      << "\t" << topQueryToCentroid.getSize(1) << "\t"     \
-                      << topQueryToCentroid.getSize(0) << "\n"             \
-                      << "block: " << kThreadsPerBlock << "\n"             \
-                      << "global memory:"                                  \
-                      << smem * topQueryToCentroid.getSize(1) *            \
-                            topQueryToCentroid.getSize(0)                  \
-                      << "\n";*/                                           \
-                                                                           \
-            pqScanPrecomputedMultiPass3<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
-                    <<<grid, block, 0, stream>>>(                          \
-                            smem,                                          \
-                            queries,                                       \
-                            precompTerm1,                                  \
-                            precompTerm2T,                                 \
-                            precompTerm3T,                                 \
-                            topQueryToCentroid,                            \
-                            listCodes.data().get(),                        \
-                            listLengths.data().get(),                      \
-                            prefixSumOffsets,                              \
-                            allDistances);                                 \
-        }                                                                  \
+#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                     \
+    do {                                                                  \
+        auto precompTerm2T = precompTerm2.toTensor<LOOKUP_T>();           \
+        auto precompTerm3T = precompTerm3.toTensor<LOOKUP_T>();           \
+        if (true) {                                                       \
+            if (NUM_SUB_Q == 128) {                                       \
+                cudaFuncSetAttribute(                                     \
+                        pqScanPrecomputedMultiPass<                       \
+                                NUM_SUB_Q,                                \
+                                LOOKUP_T,                                 \
+                                LOOKUP_VEC_T>,                            \
+                        cudaFuncAttributeMaxDynamicSharedMemorySize,      \
+                        64 * 1024);                                       \
+            }                                                             \
+            /*printf("use v1\n");   */                                    \
+            pqScanPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
+                    <<<grid, block, smem, stream>>>(                      \
+                            queries,                                      \
+                            precompTerm1,                                 \
+                            precompTerm2T,                                \
+                            precompTerm3T,                                \
+                            topQueryToCentroid,                           \
+                            listCodes.data().get(),                       \
+                            listLengths.data().get(),                     \
+                            prefixSumOffsets,                             \
+                            allDistances);                                \
+        } else {                                                          \
+            /*printf("use v2\n");                                         \
+            std::cout << "grid: "                                         \
+                      << "\t" << topQueryToCentroid.getSize(1) << "\t"    \
+                      << topQueryToCentroid.getSize(0) << "\n"            \
+                      << "block: " << kThreadsPerBlock << "\n"            \
+                      << "global memory:"                                 \
+                      << smem * topQueryToCentroid.getSize(1) *           \
+                            topQueryToCentroid.getSize(0)                 \
+                      << "\n";*/                                          \
+                                                                          \
+            pqScanPrecomputedMultiPassUseGlobalMemoryV2<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
+                    <<<grid, block, 0, stream>>>(            \
+                        smem,                                                 \
+                        queries,                                              \
+                        precompTerm1,                                         \
+                        precompTerm2T,                                        \
+                        precompTerm3T,                                        \
+                        topQueryToCentroid,                                   \
+                        listCodes.data().get(),                               \
+                        listLengths.data().get(),                             \
+                        prefixSumOffsets,                                     \
+                        allDistances);                                        \
+        }                                                                 \
     } while (0)
 
 #define RUN_PQ(NUM_SUB_Q)                         \
