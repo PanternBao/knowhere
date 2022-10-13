@@ -379,8 +379,8 @@ void IVFPQR::query(
                 tmpOutDistances,
                 tmpOutIndices);
     }
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "ivfpq::query done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -401,8 +401,8 @@ void IVFPQR::query(
                 listIds, listOffsets, tmpOutIndices, debug_flag);
     }
 
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "calculateListId done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -413,8 +413,8 @@ void IVFPQR::query(
 
     //计算query和"result所在的粗聚类"的残差
     quantizer_->reconstruct(listIds, listCoarseCentroids);
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "reconstruct done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -432,8 +432,8 @@ void IVFPQR::query(
                 listCoarseCentroids,
                 debug_flag);
     }
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -455,8 +455,8 @@ void IVFPQR::query(
         // GPU
         tmpOutIndices.copyFrom(hostOutIndices, stream);
     }
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -465,8 +465,8 @@ void IVFPQR::query(
             makeDevAlloc(AllocType::Other, stream),
             {nq, realK, dim_});
     refinePQ.calculateResidualVector2(tmpOutIndices, residual2);
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "calculateResidualVector2 done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -480,8 +480,8 @@ void IVFPQR::query(
                 residual1, residual2, codeDistances, debug_flag);
     }
 
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "pqCodeDistances done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -493,8 +493,8 @@ void IVFPQR::query(
                 codeDistances, tmpOutIndices);
     }
 
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "sortByDistance done " << sw.getElapsedTime() << endl;
     sw.restart();
@@ -519,8 +519,8 @@ void IVFPQR::query(
         extractData2<<<grid, block, 0, stream>>>(
                 codeDistances, outDistances, stream);
     }
-    cudaStreamSynchronize(stream);
-    cudaDeviceSynchronize();
+    //   cudaStreamSynchronize(stream);
+    //   cudaDeviceSynchronize();
     sw.stop();
     cout << "extractData done " << sw.getElapsedTime() << endl;
     sw.restart();

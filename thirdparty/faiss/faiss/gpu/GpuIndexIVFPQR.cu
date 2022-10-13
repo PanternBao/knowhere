@@ -13,6 +13,7 @@
 #include <faiss/gpu/utils/CopyUtils.cuh>
 
 #include <limits>
+#include <stdexcept>
 
 namespace faiss {
 namespace gpu {
@@ -20,10 +21,9 @@ namespace gpu {
 GpuIndexIVFPQR::GpuIndexIVFPQR(
         GpuResourcesProvider* provider,
         const faiss::IndexIVFPQR* index,
-        int debug_flag,
         GpuIndexIVFPQRConfig config)
         : GpuIndexIVFPQ(provider, index, config, false),
-          debug_flag(debug_flag) {
+          debug_flag(config.debug_flag) {
     copyFrom(index);
 }
 
@@ -42,11 +42,13 @@ GpuIndexIVFPQR::GpuIndexIVFPQR(
                   subQuantizers,
                   bitsPerCode,
                   metric,
-                  config) {
+                  config),
+          debug_flag(config.debug_flag) {
     verifySettings_();
 
     // We haven't trained ourselves, so don't construct the PQ index yet
     this->is_trained = false;
+    throw std::invalid_argument("unsupported gpu train now");
 }
 
 GpuIndexIVFPQR::~GpuIndexIVFPQR() {}

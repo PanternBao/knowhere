@@ -18,7 +18,9 @@ namespace faiss {
 namespace gpu {
 
 class GpuIndexFlat;
-struct GpuIndexIVFPQRConfig : public GpuIndexIVFPQConfig {};
+struct GpuIndexIVFPQRConfig : public GpuIndexIVFPQConfig {
+    int debug_flag;
+};
 
 /// IVFPQR index for the GPU
 class GpuIndexIVFPQR : public GpuIndexIVFPQ {
@@ -28,7 +30,6 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
     GpuIndexIVFPQR(
             GpuResourcesProvider* provider,
             const faiss::IndexIVFPQR* index,
-            int debug_flag,
             GpuIndexIVFPQRConfig config = GpuIndexIVFPQRConfig());
 
     /// Construct an empty index
