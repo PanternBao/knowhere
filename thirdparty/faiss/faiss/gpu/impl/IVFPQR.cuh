@@ -33,6 +33,7 @@ class IVFPQR : public IVFPQ {
            IndicesOptions indicesOptions,
            MemorySpace space,
            std::vector<uint8_t> refineCodes,
+           int refineNumSubQuantizers,
            int debug_flag);
 
     ~IVFPQR() override;

@@ -52,6 +52,7 @@ IVFPQR::IVFPQR(
         IndicesOptions indicesOptions,
         MemorySpace space,
         std::vector<uint8_t> refineCodes,
+        int refineNumSubQuantizers,
         int debug_flag)
         : IVFPQ(resources,
                 metric,
@@ -69,8 +70,8 @@ IVFPQR::IVFPQR(
                   resources,
                   metric,
                   metricArg,
-                  quantizer,            // don't use ！
-                  2 * numSubQuantizers, // todo:custom numSubQuantizers
+                  quantizer, // don't use ！
+                  refineNumSubQuantizers,
                   bitsPerSubQuantizer,
                   useFloat16LookupTables,
                   useMMCodeDistance,

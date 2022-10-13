@@ -18,9 +18,9 @@ namespace faiss {
 namespace gpu {
 
 class GpuIndexFlat;
-class IVFPQ;
+struct GpuIndexIVFPQRConfig : public GpuIndexIVFPQConfig {};
 
-/// IVFPQ index for the GPU
+/// IVFPQR index for the GPU
 class GpuIndexIVFPQR : public GpuIndexIVFPQ {
    public:
     /// Construct from a pre-existing faiss::IndexIVFPQR instance, copying
@@ -29,7 +29,7 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
             GpuResourcesProvider* provider,
             const faiss::IndexIVFPQR* index,
             int debug_flag,
-            GpuIndexIVFPQConfig config = GpuIndexIVFPQConfig());
+            GpuIndexIVFPQRConfig config = GpuIndexIVFPQRConfig());
 
     /// Construct an empty index
     GpuIndexIVFPQR(
@@ -39,7 +39,7 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
             int subQuantizers,
             int bitsPerCode,
             faiss::MetricType metric,
-            GpuIndexIVFPQConfig config = GpuIndexIVFPQConfig());
+            GpuIndexIVFPQRConfig config = GpuIndexIVFPQRConfig());
 
     ~GpuIndexIVFPQR() override;
     void copyFrom(const faiss::IndexIVFPQR* index);

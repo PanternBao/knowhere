@@ -39,7 +39,7 @@ __forceinline__ __device__ void warpFence() {
 //#define GPU_MAX_SELECTION_K 1024
 //#endif
 //#todo
-#define GPU_MAX_SELECTION_K 8192
+#define GPU_MAX_SELECTION_K 16384
 
 } // namespace gpu
 } // namespace faiss

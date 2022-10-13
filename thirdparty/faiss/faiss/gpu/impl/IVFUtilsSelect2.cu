@@ -335,6 +335,8 @@ void runPass2SelectLists(
             RUN_PASS(32, 4096, 8, DIR);  \
         } else if (k <= 8192) {          \
             RUN_PASS(32, 8192, 8, DIR);  \
+        } else if (k <= 16384) {         \
+            RUN_PASS(32, 16384, 8, DIR); \
         }                                \
     } while (0)
 

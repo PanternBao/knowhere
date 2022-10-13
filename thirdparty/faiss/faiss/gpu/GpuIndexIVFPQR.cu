@@ -21,7 +21,7 @@ GpuIndexIVFPQR::GpuIndexIVFPQR(
         GpuResourcesProvider* provider,
         const faiss::IndexIVFPQR* index,
         int debug_flag,
-        GpuIndexIVFPQConfig config)
+        GpuIndexIVFPQRConfig config)
         : GpuIndexIVFPQ(provider, index, config, false),
           debug_flag(debug_flag) {
     copyFrom(index);
@@ -34,7 +34,7 @@ GpuIndexIVFPQR::GpuIndexIVFPQR(
         int subQuantizers,
         int bitsPerCode,
         faiss::MetricType metric,
-        GpuIndexIVFPQConfig config)
+        GpuIndexIVFPQRConfig config)
         : GpuIndexIVFPQ(
                   provider,
                   dims,
@@ -62,6 +62,7 @@ void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
 
     pq = index->pq;
     subQuantizers_ = index->pq.M;
+    int refineSubQuantizers_ = index->refine_pq.M;
     bitsPerCode_ = index->pq.nbits;
 
     // We only support this
@@ -100,6 +101,7 @@ void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
             ivfpqConfig_.indicesOptions,
             config_.memorySpace,
             index->refine_codes,
+            refineSubQuantizers_,
             debug_flag));
     ((IVFPQR*)index_.get())->kFactor = index->k_factor;
     printf("init ok %f,%f",
