@@ -70,7 +70,7 @@ struct IndexIVFPQR : IndexIVFPQ {
     IndexIVFPQR();
 
    public:
-    int debug_flag;
+    int debug_flag=0;
 };
 
 } // namespace faiss

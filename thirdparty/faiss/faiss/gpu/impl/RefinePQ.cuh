@@ -43,7 +43,7 @@ class RefinePQ : public IVFPQ {
     DeviceTensor<uint8_t, 2, true> refineCodes_;
     Tensor<float, 3, true> pqCentroidsMiddleCode2_;
     int nb;
-    int debug_flag;
+    int debug_flag=0;
     // std::vector<uint8_t> refineCodes_;
     //    /// Number of sub-quantizers per vector
     //    const int numSubQuantizers_;

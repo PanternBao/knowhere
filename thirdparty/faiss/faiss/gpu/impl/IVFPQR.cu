@@ -310,7 +310,9 @@ void IVFPQR::query(
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices) {
     // indicesOptions_ = INDICES_IVF;
-    cout << "use ivfpqr::query" << endl;
+    if (debug_flag & PRINT_TIME) {
+        cout << "use ivfpqr::query" << endl;
+    }
     StopWatch sw = StopWatch::start();
     int realK = kFactor * topK;
     // These are caught at a higher level
@@ -360,7 +362,9 @@ void IVFPQR::query(
             true);
 
     if (precomputedCodes_) {
-        printf("use precomputedCodes_\n");
+        if (debug_flag & PRINT_TIME) {
+            printf("use precomputedCodes_\n");
+        }
         FAISS_ASSERT(metric_ == MetricType::METRIC_L2);
 
         runPQPrecomputedCodes_(
@@ -379,11 +383,13 @@ void IVFPQR::query(
                 tmpOutDistances,
                 tmpOutIndices);
     }
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "ivfpq::query done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "ivfpq::query done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     //残差
     DeviceTensor<float, 3, true> residual1(
             resources_,
@@ -400,11 +406,12 @@ void IVFPQR::query(
         calculateListId<<<grid, block, 0, stream>>>(
                 listIds, listOffsets, tmpOutIndices, debug_flag);
     }
-
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "calculateListId done " << sw.getElapsedTime() << endl;
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "calculateListId done " << sw.getElapsedTime() << endl;
+    }
     sw.restart();
     DeviceTensor<float, 3, true> listCoarseCentroids(
             resources_,
@@ -413,11 +420,13 @@ void IVFPQR::query(
 
     //计算query和"result所在的粗聚类"的残差
     quantizer_->reconstruct(listIds, listCoarseCentroids);
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "reconstruct done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "reconstruct done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     {
         auto grid = dim3(nq, realK);
         auto block = dim3(min(dim_, 256));
@@ -432,11 +441,13 @@ void IVFPQR::query(
                 listCoarseCentroids,
                 debug_flag);
     }
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     // If the GPU isn't storing indices (they are on the CPU side), we
     // need to perform the re-mapping here
     // FIXME: we might ultimately be calling this function with inputs
@@ -455,21 +466,25 @@ void IVFPQR::query(
         // GPU
         tmpOutIndices.copyFrom(hostOutIndices, stream);
     }
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     DeviceTensor<float, 3, true> residual2(
             resources_,
             makeDevAlloc(AllocType::Other, stream),
             {nq, realK, dim_});
     refinePQ.calculateResidualVector2(tmpOutIndices, residual2);
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "calculateResidualVector2 done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "calculateResidualVector2 done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
 
     DeviceTensor<float, 2, true> codeDistances(
             resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
@@ -479,12 +494,13 @@ void IVFPQR::query(
         pqCodeDistances<<<grid, block, 0, stream>>>(
                 residual1, residual2, codeDistances, debug_flag);
     }
-
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "pqCodeDistances done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "pqCodeDistances done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     // printArray<<<grid, block, 0, stream>>>(codeDistances);
     {
         auto grid = dim3(nq);
@@ -492,12 +508,13 @@ void IVFPQR::query(
         sortByDistance<<<grid, block, 0, stream>>>(
                 codeDistances, tmpOutIndices);
     }
-
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "sortByDistance done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "sortByDistance done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
     //    DeviceTensor<float, 3, true> residualBase(
     //            resources_,
     //            makeDevAlloc(AllocType::Other, stream),
@@ -519,11 +536,13 @@ void IVFPQR::query(
         extractData2<<<grid, block, 0, stream>>>(
                 codeDistances, outDistances, stream);
     }
-    //   cudaStreamSynchronize(stream);
-    //   cudaDeviceSynchronize();
-    sw.stop();
-    cout << "extractData done " << sw.getElapsedTime() << endl;
-    sw.restart();
+    if (debug_flag & PRINT_TIME) {
+        cudaStreamSynchronize(stream);
+        cudaDeviceSynchronize();
+        sw.stop();
+        cout << "extractData done " << sw.getElapsedTime() << endl;
+        sw.restart();
+    }
 
     // outIndices.copyFrom(tmp_labels.transpose(0, 1)[0], stream);
 }

@@ -21,3 +21,5 @@ const int PRINT_RESIDUAL2_CODE = 1 << 4;
 const int PRINT_ORDERED_DISTANCE = 1 << 5;
 
 const int PRINT_MATCH_QUERY = 1 << 6;
+
+const int PRINT_TIME = 1 << 7;

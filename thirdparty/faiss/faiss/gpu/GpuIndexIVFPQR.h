@@ -19,7 +19,7 @@ namespace gpu {
 
 class GpuIndexFlat;
 struct GpuIndexIVFPQRConfig : public GpuIndexIVFPQConfig {
-    int debug_flag;
+    int debug_flag=0;
 };
 
 /// IVFPQR index for the GPU
@@ -57,7 +57,7 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
     //    int kFactor = 4;
 
    public:
-    int debug_flag;
+    int debug_flag=0;
 };
 
 } // namespace gpu
