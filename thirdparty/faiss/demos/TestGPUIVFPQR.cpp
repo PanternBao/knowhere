@@ -73,7 +73,7 @@ const char* pqDataFileName = "pq-data.dump";
 const char* groudTruthFileName = "pqr-groudtruth.dump";
 const int d = 128;      // dimension
 const int nb = 1000000; // database size
-const int nq = 8192;      // nb of queries
+const int nq = 8192;     // nb of queries
 const int nlist = 8192;
 const int nprobe = 156;
 const int topK = 100;
@@ -226,24 +226,30 @@ void search_gpu() {
 
     gpu::StandardGpuResources res; // use a single GPU
 
-    gpu::GpuIndexIVFPQConfig config;
-    config.useFloat16LookupTables = true;
-    config.usePrecomputedTables = true;
-    config.interleavedLayout = false;
-    // config.indicesOptions = gpu::IndicesOptions::INDICES_CPU;
-    gpu::GpuIndexIVFPQ index_gpu_1(&res, pq_index_cpu, config);
-    current_index = &index_gpu_1;
-    printf("==============test_pq_gpu==============\n");
-    searchInner();
-    printf("==============test_pq_gpu==============\n");
-    //        config.useFloat16LookupTables = true;
-    //        config.usePrecomputedTables = false;
-    //        config.indicesOptions = gpu::IndicesOptions::INDICES_CPU; // must!
-    //        gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu, debug_flag,
-    //        config); current_index = &index_gpu_2;
-    //        printf("==============test_gpu==============\n");
-    //        searchInner();
-    //        printf("==============test_gpu==============\n");
+    {
+        gpu::GpuIndexIVFPQConfig config;
+        config.useFloat16LookupTables = true;
+        config.usePrecomputedTables = true;
+        config.interleavedLayout = false;
+        // config.indicesOptions = gpu::IndicesOptions::INDICES_CPU;
+        gpu::GpuIndexIVFPQ index_gpu_1(&res, pq_index_cpu, config);
+        current_index = &index_gpu_1;
+        printf("==============test_pq_gpu==============\n");
+        searchInner();
+        printf("==============test_pq_gpu==============\n");
+    }
+    if(!disableIVFPQR){
+        gpu::GpuIndexIVFPQRConfig config;
+        config.useFloat16LookupTables = true;
+        config.usePrecomputedTables = true;
+        config.indicesOptions = gpu::IndicesOptions::INDICES_CPU; // must!
+        config.debug_flag = debug_flag;
+        gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu, config);
+        current_index = &index_gpu_2;
+        printf("==============test_gpu==============\n");
+        searchInner();
+        printf("==============test_gpu==============\n");
+    }
 
     //    for (auto& i : resArr) {
     //        delete i;
