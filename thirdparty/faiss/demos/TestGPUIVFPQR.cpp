@@ -83,6 +83,7 @@ const int k_factor = 4;
 const int thread_num = 32;
 const int debug_flag = 0;
 bool needTrain = false;
+int loop_count = 10;
 // const int d = 128;      // dimension
 // const int nb = 1000000; // database size
 // const int nq = 1000;    // nb of queries
@@ -101,7 +102,8 @@ Index* gt_index = NULL;
 Index* current_index = NULL;
 idx_t* gt_nns = new idx_t[1 * nq];
 float* trueD = new float[1 * nq];
-void searchInner();
+bool calculateGT=false;
+void searchInner(int loop_count);
 void search_gpu();
 void search_cpu();
 void calculateData();
@@ -235,10 +237,15 @@ void search_gpu() {
         gpu::GpuIndexIVFPQ index_gpu_1(&res, pq_index_cpu, config);
         current_index = &index_gpu_1;
         printf("==============test_pq_gpu==============\n");
-        searchInner();
+        if(disableIVFPQR){
+            searchInner(loop_count);
+        }else{
+            searchInner(1);
+        }
+
         printf("==============test_pq_gpu==============\n");
     }
-    if(!disableIVFPQR){
+    if (!disableIVFPQR) {
         gpu::GpuIndexIVFPQRConfig config;
         config.useFloat16LookupTables = true;
         config.usePrecomputedTables = true;
@@ -246,9 +253,9 @@ void search_gpu() {
         config.debug_flag = debug_flag;
         gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu, config);
         current_index = &index_gpu_2;
-        printf("==============test_gpu==============\n");
-        searchInner();
-        printf("==============test_gpu==============\n");
+        printf("==============test_pqr_gpu==============\n");
+        searchInner(loop_count);
+        printf("==============test_pqr_gpu==============\n");
     }
 
     //    for (auto& i : resArr) {
@@ -263,22 +270,23 @@ void search_cpu() {
     if (!disableIVFPQR) {
         current_index = pqr_index_cpu;
         printf("==============test_pqr_cpu==============\n");
-        searchInner();
+        searchInner(1);
         printf("==============test_pqr_cpu==============\n");
     }
     current_index = pq_index_cpu;
     printf("==============test_pq_cpu==============\n");
-    searchInner();
+    searchInner(1);
     printf("==============test_pq_cpu==============\n");
 }
-void searchInner() {
+void searchInner(int loop_count) {
     printf("search\n");
 
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < loop_count; ++i) {
         //    for (int i = 0; i < 1 * nq; ++i) {
         //        std::cout << gtNNS[i] << "\t";
         //    }
         //    std::cout << "\n";
+
         {
             // search xq
             idx_t* nns = new idx_t[topK * nq];
@@ -291,28 +299,28 @@ void searchInner() {
             //        }
 
             sw.stop();
-
-            int n_ok = 0;
-            if (debug_flag & PRINT_MATCH_QUERY) {
-                printf("match query\n");
-            }
-            for (int q = 0; q < nq; q++) {
-                for (int j = 0; j < topK; j++)
-                    if (nns[q * topK + j] == gt_nns[q]) {
-                        if (debug_flag & PRINT_MATCH_QUERY) {
-                            printf("%d,%d,%ld,%f\t",
-                                   q,
-                                   j,
-                                   nns[q * topK + j],
-                                   D[q * topK + j]);
-                        }
-                        n_ok++;
-                        break;
-                    }
-            }
             cout << "take " << sw.getElapsedTime() << "ms" << endl;
-
-            cout << n_ok << "\t" << nq << "\n";
+            if(calculateGT) {
+                int n_ok = 0;
+                if (debug_flag & PRINT_MATCH_QUERY) {
+                    printf("match query\n");
+                }
+                for (int q = 0; q < nq; q++) {
+                    for (int j = 0; j < topK; j++)
+                        if (nns[q * topK + j] == gt_nns[q]) {
+                            if (debug_flag & PRINT_MATCH_QUERY) {
+                                printf("%d,%d,%ld,%f\t",
+                                       q,
+                                       j,
+                                       nns[q * topK + j],
+                                       D[q * topK + j]);
+                            }
+                            n_ok++;
+                            break;
+                        }
+                }
+                cout << n_ok << "\t" << nq << "\n";
+            }
             delete[] nns;
             delete[] D;
         }
