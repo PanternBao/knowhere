@@ -20,6 +20,7 @@
 #include <faiss/gpu/impl/PQScanMultiPassNoPrecomputed.cuh>
 #include <faiss/gpu/impl/PQScanMultiPassPrecomputed.cuh>
 #include <faiss/gpu/impl/VectorResidual.cuh>
+#include <faiss/gpu/utils/BlockSelectKernel.cuh>
 #include <faiss/gpu/utils/ConversionOperators.cuh>
 #include <faiss/gpu/utils/CopyUtils.cuh>
 #include <faiss/gpu/utils/DeviceDefs.cuh>
@@ -295,6 +296,22 @@ __global__ void extractData2(
     // fromDevice(from[i].data(), to[i].data(), n2 * sizeof(T), stream);
 }
 
+
+template <typename T>
+__global__ void extractIndex(
+        Tensor<T, 2, true> from,
+        Tensor<int, 2, true> fromIndex,
+        Tensor<T, 2, true> to,
+        cudaStream_t stream) {
+    int n1 = to.getSize(0);
+    int n2 = to.getSize(1);
+    int i = blockIdx.x;
+    for (int j = threadIdx.x; j < n2; j += blockDim.x) {
+        T tmp = from[i][fromIndex[i][j]];
+        to[i][j] = tmp;
+    }
+}
+
 void IVFPQR::setPrecomputedCodes(bool enable) {
     if (enable) {
         IVFPQ::setPrecomputedCodes(enable); // todo:
@@ -502,11 +519,18 @@ void IVFPQR::query(
         sw.restart();
     }
     // printArray<<<grid, block, 0, stream>>>(codeDistances);
+
+
+    DeviceTensor<int, 2, true> reRankIndices(
+            resources_, makeDevAlloc(AllocType::Other, stream), {nq, topK});
     {
-        auto grid = dim3(nq);
-        auto block = dim3(1);
-        sortByDistance<<<grid, block, 0, stream>>>(
-                codeDistances, tmpOutIndices);
+        runBlockSelect(
+                codeDistances,
+                outDistances,
+                reRankIndices,
+                false,
+                topK,
+                stream);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -515,26 +539,11 @@ void IVFPQR::query(
         cout << "sortByDistance done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
-    //    DeviceTensor<float, 3, true> residualBase(
-    //            resources_,
-    //            makeDevAlloc(AllocType::Other, stream),
-    //            {queries.getSize(0), nprobe, dim_});
-    // quantizer_->reconstruct(coarseIndices, residualBase);
-
-    //    quantizer_->computeResidual(
-    //            queries,
-    //            coarseIndices.downcastOuter<1>(),
-    //            residualBase.downcastOuter<2>());
-
-    // printf("begin extract1\n");
-    // from  n*k*kFactor to  n*k
     {
         auto grid = dim3(nq);
         auto block = dim3(min(256, topK));
-        extractData2<<<grid, block, 0, stream>>>(
-                tmpOutIndices, outIndices, stream);
-        extractData2<<<grid, block, 0, stream>>>(
-                codeDistances, outDistances, stream);
+        extractIndex<<<grid, block, 0, stream>>>(
+                tmpOutIndices, reRankIndices, outIndices, stream);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -549,3 +558,4 @@ void IVFPQR::query(
 
 } // namespace gpu
 } // namespace faiss
+
