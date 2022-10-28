@@ -411,6 +411,7 @@ void* StandardGpuResourcesImpl::allocMemory(const AllocRequest& req) {
         auto& tempMem = tempMemory_[adjReq.device];
 
         if (adjReq.size > tempMem->getSizeAvailable()) {
+            std::cout << "allocate from device"<<std::endl;
             // We need to allocate this ourselves
             AllocRequest newReq = adjReq;
             newReq.space = MemorySpace::Device;
