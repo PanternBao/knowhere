@@ -249,7 +249,7 @@ void search_gpu() {
         gpu::GpuIndexIVFPQRConfig config;
         config.useFloat16LookupTables = true;
         config.usePrecomputedTables = true;
-        config.indicesOptions = gpu::IndicesOptions::INDICES_CPU; // must!
+        config.indicesOptions = gpu::IndicesOptions::INDICES_GPU_ALL;
         config.debug_flag = debug_flag;
         gpu::GpuIndexIVFPQR index_gpu_2(&res, pqr_index_cpu, config);
         current_index = &index_gpu_2;
