@@ -329,7 +329,7 @@ void runIVFFlatScanTile(
     // k-select final output
     auto flatHeapDistances = heapDistances.downcastInner<2>();
     auto flatHeapIndices = heapIndices.downcastInner<2>();
-
+    Tensor<Index::idx_t, 2, true> outIndices2;
     runPass2SelectLists(
             flatHeapDistances,
             flatHeapIndices,
@@ -342,7 +342,7 @@ void runIVFFlatScanTile(
             outDistances,
             outIndices,
             stream,
-            outIndices);//todo: change outIndices2
+            outIndices2);
 }
 
 void runIVFFlatScan(

@@ -408,6 +408,7 @@ void GpuIndexIVFPQ::searchImpl_(
                 nprobe,
                 k,
                 outDistances,
+                outLabels,
                 outLabels);
     } else {
         auto bitsetDevice = toDeviceTemporary<uint8_t, 1>(
@@ -422,6 +423,7 @@ void GpuIndexIVFPQ::searchImpl_(
                 nprobe,
                 k,
                 outDistances,
+                outLabels,
                 outLabels);
     }
 }

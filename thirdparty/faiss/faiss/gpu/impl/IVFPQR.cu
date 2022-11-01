@@ -340,15 +340,15 @@ void IVFPQR::query(
     int nq = queries.getSize(0);
 
     DeviceTensor<float, 2, true> tmp_distances(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
     DeviceTensor<Index::idx_t, 2, true> tmp_labels(
             resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     DeviceTensor<Index::idx_t, 2, true> tmp_labels2(
             resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     Tensor<float, 2, true> tmpOutDistances(tmp_distances.data(), {nq, realK});
-    Tensor<Index::idx_t, 2, true> tmpOutIndices(
+    Tensor<Index::idx_t, 2, true> vectorIndices(
             const_cast<Index::idx_t*>(tmp_labels.data()), {nq, realK});
-    Tensor<Index::idx_t, 2, true> tmpOutIndices2(
+    Tensor<Index::idx_t, 2, true> listNoAndOffsets(
             const_cast<Index::idx_t*>(tmp_labels2.data()), {nq, realK});
 
     nprobe = std::min(nprobe, quantizer_->getSize());
@@ -394,8 +394,8 @@ void IVFPQR::query(
                 coarseIndices,
                 realK,
                 tmpOutDistances,
-                tmpOutIndices,
-                tmpOutIndices2);
+                vectorIndices,
+                listNoAndOffsets);
     } else {
         runPQNoPrecomputedCodes_(
                 queries,
@@ -403,7 +403,8 @@ void IVFPQR::query(
                 coarseIndices,
                 realK,
                 tmpOutDistances,
-                tmpOutIndices,tmpOutIndices2);
+                vectorIndices,
+                listNoAndOffsets);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -426,7 +427,7 @@ void IVFPQR::query(
         auto grid = dim3(nq);
         auto block = dim3(min(256, realK));
         calculateListId<<<grid, block, 0, stream>>>(
-                listIds, listOffsets, tmpOutIndices2, debug_flag);
+                listIds, listOffsets, listNoAndOffsets, debug_flag);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -475,7 +476,7 @@ void IVFPQR::query(
     // FIXME: we might ultimately be calling this function with inputs
     // from the CPU, these are unnecessary copies
     if (indicesOptions_ == INDICES_CPU) {
-        HostTensor<Index::idx_t, 2, true> hostOutIndices(tmpOutIndices, stream);
+        HostTensor<Index::idx_t, 2, true> hostOutIndices(vectorIndices, stream);
 
         ivfOffsetToUserIndex(
                 hostOutIndices.data(),
@@ -486,7 +487,8 @@ void IVFPQR::query(
 
         // Copy back to GPU, since the input to this function is on the
         // GPU
-        tmpOutIndices.copyFrom(hostOutIndices, stream);
+        //origin vector index
+        vectorIndices.copyFrom(hostOutIndices, stream);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -499,7 +501,7 @@ void IVFPQR::query(
             resources_,
             makeDevAlloc(AllocType::Other, stream),
             {nq, realK, dim_});
-    refinePQ.calculateResidualVector2(tmpOutIndices, residual2);
+    refinePQ.calculateResidualVector2(vectorIndices, residual2);
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
         cudaDeviceSynchronize();
@@ -548,7 +550,7 @@ void IVFPQR::query(
         auto grid = dim3(nq);
         auto block = dim3(min(256, topK));
         extractIndex<<<grid, block, 0, stream>>>(
-                tmpOutIndices, reRankIndices, outIndices, stream);
+                vectorIndices, reRankIndices, outIndices, stream);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);

@@ -111,7 +111,9 @@ __global__ void ivfInterleavedScan2(
                 index = (Index::idx_t)((int*)listIndices[listId])[listOffset];
             } else if (opt == INDICES_64_BIT) {
                 index = ((Index::idx_t*)listIndices[listId])[listOffset];
-            } else {
+            } else if (opt == INDICES_GPU_ALL) {
+                printf("this implementation is not support INDICES_GPU_ALL");
+            }  else {
                 index = ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
             }
         }

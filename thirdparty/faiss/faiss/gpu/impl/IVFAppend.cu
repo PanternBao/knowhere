@@ -97,7 +97,7 @@ __global__ void ivfIndicesAppend(
     if (opt == INDICES_32_BIT) {
         // FIXME: there could be overflow here, but where should we check this?
         ((int*)listIndices[listId])[offset] = (int)index;
-    } else if (opt == INDICES_64_BIT) {
+    } else if ((opt == INDICES_64_BIT)||(opt == INDICES_GPU_ALL)) {
         ((Index::idx_t*)listIndices[listId])[offset] = index;
     }
 }
@@ -111,7 +111,7 @@ void runIVFIndicesAppend(
         cudaStream_t stream) {
     FAISS_ASSERT(
             opt == INDICES_CPU || opt == INDICES_IVF || opt == INDICES_32_BIT ||
-            opt == INDICES_64_BIT);
+            opt == INDICES_64_BIT||(opt == INDICES_GPU_ALL));
 
     if (opt != INDICES_CPU && opt != INDICES_IVF) {
         int num = listIds.getSize(0);

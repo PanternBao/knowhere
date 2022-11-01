@@ -26,9 +26,8 @@ enum IndicesOptions {
     /// Indices are stored as 64 bit integers on the GPU
     INDICES_64_BIT = 3,
     /// both stored in GPU; the GPU returns
-    /// (inverted list, offset) . and can  translated to
-    /// the real user index.
-    INDICES_ALL_GPU = 4,
+    /// (inverted list, offset)  and  the real user index.
+    INDICES_GPU_ALL = 4,
 };
 
 } // namespace gpu

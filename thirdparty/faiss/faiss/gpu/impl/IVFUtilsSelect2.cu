@@ -138,13 +138,12 @@ __global__ void pass2SelectLists(
             // value
             int listStart = *(prefixSumOffsets[queryId][probe].data() - 1);
             int listOffset = offset - listStart;
-
             // This gives us our final index
             if (opt == INDICES_32_BIT) {
                 index = (Index::idx_t)((int*)listIndices[listId])[listOffset];
-                index2 =
-                        ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
             } else if (opt == INDICES_64_BIT) {
+                index = ((Index::idx_t*)listIndices[listId])[listOffset];
+            } else if (opt == INDICES_GPU_ALL) {
                 index = ((Index::idx_t*)listIndices[listId])[listOffset];
                 index2 =
                         ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
@@ -152,7 +151,10 @@ __global__ void pass2SelectLists(
                 index = ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
             }
         }
-        outIndices2[queryId][i] = index2;
+        // don't change assign order.
+        if (opt == INDICES_GPU_ALL) {
+            outIndices2[queryId][i] = index2;
+        }
         outIndices[queryId][i] = index;
     }
 }
@@ -233,6 +235,7 @@ __global__ void pass2SelectListsUseGlobalMemory(
         // times (#queries x k).
         int v = smemV[i];
         Index::idx_t index = -1;
+        Index::idx_t index2 = -1;
 
         if (v != -1) {
             // `offset` is the offset of the intermediate result, as
@@ -262,11 +265,18 @@ __global__ void pass2SelectListsUseGlobalMemory(
                 index = (Index::idx_t)((int*)listIndices[listId])[listOffset];
             } else if (opt == INDICES_64_BIT) {
                 index = ((Index::idx_t*)listIndices[listId])[listOffset];
+            } else if (opt == INDICES_GPU_ALL) {
+                index = ((Index::idx_t*)listIndices[listId])[listOffset];
+                index2 =
+                        ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
             } else {
                 index = ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
             }
         }
-
+        // don't change assign order.
+        if (opt == INDICES_GPU_ALL) {
+            outIndices2[queryId][i] = index2;
+        }
         outIndices[queryId][i] = index;
     }
 

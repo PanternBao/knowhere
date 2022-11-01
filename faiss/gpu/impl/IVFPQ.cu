@@ -568,7 +568,7 @@ void IVFPQ::query(
                 k,
                 outDistances,
                 outIndices,
-                outIndices2); // todo:outIndices2
+                outIndices2);
     } else {
         runPQNoPrecomputedCodes_(
                 queries,
@@ -577,7 +577,7 @@ void IVFPQ::query(
                 k,
                 outDistances,
                 outIndices,
-                outIndices2); // todo:outIndices2
+                outIndices2);
     }
 
     // If the GPU isn't storing indices (they are on the CPU side), we
