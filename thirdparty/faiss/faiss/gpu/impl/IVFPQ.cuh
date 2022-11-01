@@ -47,7 +47,8 @@ class IVFPQ : public IVFBase {
             int nprobe,
             int k,
             Tensor<float, 2, true>& outDistances,
-            Tensor<Index::idx_t, 2, true>& outIndices);
+            Tensor<Index::idx_t, 2, true>& outIndices,
+            Tensor<Index::idx_t, 2, true>& outIndices2);
 
     /// Returns our set of sub-quantizers of the form
     /// (sub q)(code id)(sub dim)
@@ -104,7 +105,8 @@ class IVFPQ : public IVFBase {
             DeviceTensor<int, 2, true>& coarseIndices,
             int k,
             Tensor<float, 2, true>& outDistances,
-            Tensor<Index::idx_t, 2, true>& outIndices);
+            Tensor<Index::idx_t, 2, true>& outIndices,
+            Tensor<Index::idx_t, 2, true>& outIndices2);
 
     /// Runs kernels for scanning inverted lists without precomputed codes
     void runPQNoPrecomputedCodes_(
@@ -114,7 +116,8 @@ class IVFPQ : public IVFBase {
             DeviceTensor<int, 2, true>& coarseIndices,
             int k,
             Tensor<float, 2, true>& outDistances,
-            Tensor<Index::idx_t, 2, true>& outIndices);
+            Tensor<Index::idx_t, 2, true>& outIndices,
+            Tensor<Index::idx_t, 2, true>& outIndices2);
 
     /// Runs kernels for scanning inverted lists without precomputed codes (for
     /// different coarse centroid type)
@@ -126,7 +129,8 @@ class IVFPQ : public IVFBase {
             DeviceTensor<int, 2, true>& coarseIndices,
             int k,
             Tensor<float, 2, true>& outDistances,
-            Tensor<Index::idx_t, 2, true>& outIndices);
+            Tensor<Index::idx_t, 2, true>& outIndices,
+            Tensor<Index::idx_t, 2, true>& outIndices2);
 
    protected:
     /// Number of sub-quantizers per vector

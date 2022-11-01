@@ -341,7 +341,8 @@ void runIVFFlatScanTile(
             metricToSortDirection(metricType),
             outDistances,
             outIndices,
-            stream);
+            stream,
+            outIndices);//todo: change outIndices2
 }
 
 void runIVFFlatScan(

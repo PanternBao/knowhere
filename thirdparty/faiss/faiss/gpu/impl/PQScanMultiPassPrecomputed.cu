@@ -25,6 +25,8 @@
 #include <faiss/gpu/utils/MathOperators.cuh>
 #include <faiss/gpu/utils/WarpPackedBits.cuh>
 
+#include <faiss/CustomVariable.h>
+
 #include <algorithm>
 #include <limits>
 
@@ -565,7 +567,8 @@ void runMultiPassTile(
         int k,
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices,
-        cudaStream_t stream) {
+        cudaStream_t stream,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     // Calculate offset lengths, so we know where to write out
     // intermediate results
     runCalcListOffsets(
@@ -832,7 +835,8 @@ void runMultiPassTile(
             false, // L2 distance chooses smallest
             outDistances,
             outIndices,
-            stream);
+            stream,
+            outIndices2);
 
     CUDA_TEST_ERROR();
 }
@@ -862,7 +866,8 @@ void runPQScanMultiPassPrecomputed(
         Tensor<float, 2, true>& outDistances,
         // output
         Tensor<Index::idx_t, 2, true>& outIndices,
-        GpuResources* res) {
+        GpuResources* res,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     constexpr int kMinQueryTileSize = 8;
     constexpr int kMaxQueryTileSize = 128;
     constexpr int kThrustMemSize = 16384;
@@ -904,6 +909,9 @@ void runPQScanMultiPassPrecomputed(
     } else if (queryTileSize > kMaxQueryTileSize) {
         queryTileSize = kMaxQueryTileSize;
     }
+    //    if (FORCE_QUERY_TILE_SIZE != -1) {
+    //        queryTileSize = FORCE_QUERY_TILE_SIZE;
+    //    }
     printf("queryTileSize %d\n", queryTileSize);
 
     // FIXME: we should adjust queryTileSize to deal with this, since
@@ -998,6 +1006,8 @@ void runPQScanMultiPassPrecomputed(
                 outDistances.narrowOutermost(query, numQueriesInTile);
         auto outIndicesView =
                 outIndices.narrowOutermost(query, numQueriesInTile);
+        auto outIndicesView2 =
+                outIndices2.narrowOutermost(query, numQueriesInTile);
 
         runMultiPassTile(
                 res,
@@ -1024,7 +1034,8 @@ void runPQScanMultiPassPrecomputed(
                 k,
                 outDistanceView,
                 outIndicesView,
-                streams[curStream]);
+                streams[curStream],
+                outIndicesView2);
 
         curStream = (curStream + 1) % 2;
     }

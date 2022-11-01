@@ -7,6 +7,8 @@
 
 #pragma once
 
+//extern int FORCE_QUERY_TILE_SIZE;
+
 // for debug flag
 const int PRINT_RESIDUAL1 = 1;
 

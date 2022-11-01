@@ -23,31 +23,31 @@ namespace gpu {
 
 // This is warp divergence central, but this is really a final step
 // and happening a small number of times
-//inline __device__ int binarySearchForBucket(
-//        int* prefixSumOffsets,
-//        int size,
-//        int val) {
-//    int start = 0;
-//    int end = size;
-//
-//    while (end - start > 0) {
-//        int mid = start + (end - start) / 2;
-//
-//        int midVal = prefixSumOffsets[mid];
-//
-//        // Find the first bucket that we are <=
-//        if (midVal <= val) {
-//            start = mid + 1;
-//        } else {
-//            end = mid;
-//        }
-//    }
-//
-//    // We must find the bucket that it is in
-//    assert(start != size);
-//
-//    return start;
-//}
+inline __device__ int binarySearchForBucket(
+        int* prefixSumOffsets,
+        int size,
+        int val) {
+    int start = 0;
+    int end = size;
+
+    while (end - start > 0) {
+        int mid = start + (end - start) / 2;
+
+        int midVal = prefixSumOffsets[mid];
+
+        // Find the first bucket that we are <=
+        if (midVal <= val) {
+            start = mid + 1;
+        } else {
+            end = mid;
+        }
+    }
+
+    // We must find the bucket that it is in
+    assert(start != size);
+
+    return start;
+}
 
 template <int ThreadsPerBlock, int NumWarpQ, int NumThreadQ, bool Dir>
 __global__ void pass2SelectLists(
@@ -59,7 +59,8 @@ __global__ void pass2SelectLists(
         int k,
         IndicesOptions opt,
         Tensor<float, 2, true> outDistances,
-        Tensor<Index::idx_t, 2, true> outIndices) {
+        Tensor<Index::idx_t, 2, true> outIndices,
+        Tensor<Index::idx_t, 2, true> outIndices2) {
     extern __shared__ float arrays[];
     float* smemK = (float*)arrays;
     int* smemV = (int*)&smemK[ThreadsPerBlock * NumWarpQ / kWarpSize];
@@ -113,20 +114,45 @@ __global__ void pass2SelectLists(
         // times (#queries x k).
         int v = smemV[i];
         Index::idx_t index = -1;
+        Index::idx_t index2 = -1;
 
         if (v != -1) {
             // `offset` is the offset of the intermediate result, as
             // calculated by the original scan.
             int offset = heapIndices[queryId][v];
 
-            index = getListIndex(queryId,
-                                 offset,
-                                 listIndices,
-                                 prefixSumOffsets,
-                                 topQueryToCentroid,
-                                 opt);
-        }
+            // In order to determine the actual user index, we need to first
+            // determine what list it was in.
+            // We do this by binary search in the prefix sum list.
+            int probe = binarySearchForBucket(
+                    prefixSumOffsets[queryId].data(),
+                    prefixSumOffsets.getSize(1),
+                    offset);
 
+            // This is then the probe for the query; we can find the actual
+            // list ID from this
+            int listId = topQueryToCentroid[queryId][probe];
+
+            // Now, we need to know the offset within the list
+            // We ensure that before the array (at offset -1), there is a 0
+            // value
+            int listStart = *(prefixSumOffsets[queryId][probe].data() - 1);
+            int listOffset = offset - listStart;
+
+            // This gives us our final index
+            if (opt == INDICES_32_BIT) {
+                index = (Index::idx_t)((int*)listIndices[listId])[listOffset];
+                index2 =
+                        ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
+            } else if (opt == INDICES_64_BIT) {
+                index = ((Index::idx_t*)listIndices[listId])[listOffset];
+                index2 =
+                        ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
+            } else {
+                index = ((Index::idx_t)listId << 32 | (Index::idx_t)listOffset);
+            }
+        }
+        outIndices2[queryId][i] = index2;
         outIndices[queryId][i] = index;
     }
 }
@@ -141,7 +167,8 @@ __global__ void pass2SelectListsUseGlobalMemory(
         int k,
         IndicesOptions opt,
         Tensor<float, 2, true> outDistances,
-        Tensor<Index::idx_t, 2, true> outIndices) {
+        Tensor<Index::idx_t, 2, true> outIndices,
+        Tensor<Index::idx_t, 2, true> outIndices2) {
     __shared__ float* mallocArray;
     float* smemK = NULL;
     int* smemV = NULL;
@@ -261,7 +288,8 @@ void runPass2SelectLists(
         bool chooseLargest,
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices,
-        cudaStream_t stream) {
+        cudaStream_t stream,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     auto grid = dim3(topQueryToCentroid.getSize(0));
 
 #define RUN_PASS(BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR)                      \
@@ -289,7 +317,8 @@ void runPass2SelectLists(
                             k,                                              \
                             indicesOptions,                                 \
                             outDistances,                                   \
-                            outIndices);                                    \
+                            outIndices,                                     \
+                            outIndices2);                                   \
         } else {                                                            \
             pass2SelectListsUseGlobalMemory<                                \
                     BLOCK,                                                  \
@@ -304,7 +333,8 @@ void runPass2SelectLists(
                     k,                                                      \
                     indicesOptions,                                         \
                     outDistances,                                           \
-                    outIndices);                                            \
+                    outIndices,                                             \
+                    outIndices2);                                           \
         }                                                                   \
         CUDA_TEST_ERROR();                                                  \
         return; /* success */                                               \

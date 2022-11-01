@@ -43,7 +43,8 @@ void runPQScanMultiPassNoPrecomputed(
         Tensor<float, 2, true>& outDistances,
         // output
         Tensor<Index::idx_t, 2, true>& outIndices,
-        GpuResources* res);
+        GpuResources* res,
+        Tensor<Index::idx_t, 2, true>& outIndices2);
 
 } // namespace gpu
 } // namespace faiss

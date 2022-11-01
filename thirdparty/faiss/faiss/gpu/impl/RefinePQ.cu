@@ -139,7 +139,7 @@ void RefinePQ::setRefineCodes_(std::vector<uint8_t> refineCodes) {
     auto stream = resources_->getDefaultStreamCurrentDevice();
     nb = refineCodes.size() / numSubQuantizers_; // todo:maybe overflow
 
-    std::cout << "nb size:" << nb << " " << refineCodes.size() << "\n";
+    //std::cout << "nb size:" << nb << " " << refineCodes.size() << "\n";
     thrust::host_vector<uint8_t> hostMemory;
 
     const uint8_t* data = refineCodes.data();

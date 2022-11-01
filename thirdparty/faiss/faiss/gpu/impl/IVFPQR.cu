@@ -174,9 +174,9 @@ __global__ void calculateListId(
         listIds[i][j] = list_no;
         // printf("list_no %d\t",(int) listIds[i][j]);
     }
-    if (debug_flag & PRINT_LIST_NO) {
-        printf("\n");
-    }
+//    if (debug_flag & PRINT_LIST_NO) {
+//        printf("\n");
+//    }
 }
 
 // todo __launch_bounds__(288, 3)
@@ -343,9 +343,13 @@ void IVFPQR::query(
             resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     DeviceTensor<Index::idx_t, 2, true> tmp_labels(
             resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
+    DeviceTensor<Index::idx_t, 2, true> tmp_labels2(
+            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     Tensor<float, 2, true> tmpOutDistances(tmp_distances.data(), {nq, realK});
     Tensor<Index::idx_t, 2, true> tmpOutIndices(
             const_cast<Index::idx_t*>(tmp_labels.data()), {nq, realK});
+    Tensor<Index::idx_t, 2, true> tmpOutIndices2(
+            const_cast<Index::idx_t*>(tmp_labels2.data()), {nq, realK});
 
     nprobe = std::min(nprobe, quantizer_->getSize());
 
@@ -390,7 +394,8 @@ void IVFPQR::query(
                 coarseIndices,
                 realK,
                 tmpOutDistances,
-                tmpOutIndices);
+                tmpOutIndices,
+                tmpOutIndices2);
     } else {
         runPQNoPrecomputedCodes_(
                 queries,
@@ -398,7 +403,7 @@ void IVFPQR::query(
                 coarseIndices,
                 realK,
                 tmpOutDistances,
-                tmpOutIndices);
+                tmpOutIndices,tmpOutIndices2);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -421,7 +426,7 @@ void IVFPQR::query(
         auto grid = dim3(nq);
         auto block = dim3(min(256, realK));
         calculateListId<<<grid, block, 0, stream>>>(
-                listIds, listOffsets, tmpOutIndices, debug_flag);
+                listIds, listOffsets, tmpOutIndices2, debug_flag);
     }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);

@@ -106,9 +106,9 @@ void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
             refineSubQuantizers_,
             debug_flag));
     ((IVFPQR*)index_.get())->kFactor = index->k_factor;
-    printf("init ok %f,%f",
-           index->k_factor,
-           index->refine_pq.centroids.data()[0]);
+//    printf("init ok %f,%f",
+//           index->k_factor,
+//           index->refine_pq.centroids.data()[0]);
     // Doesn't make sense to reserve memory here
     index_->setPrecomputedCodes(usePrecomputedTables_);
 

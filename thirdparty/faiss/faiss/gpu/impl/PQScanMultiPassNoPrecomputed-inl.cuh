@@ -318,7 +318,8 @@ void runMultiPassTile(
         faiss::MetricType metric,
         Tensor<float, 2, true>& outDistances,
         Tensor<Index::idx_t, 2, true>& outIndices,
-        cudaStream_t stream) {
+        cudaStream_t stream,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     // We only support two metrics at the moment
     FAISS_ASSERT(
             metric == MetricType::METRIC_INNER_PRODUCT ||
@@ -555,7 +556,8 @@ void runMultiPassTile(
             !l2Distance,  // L2 distance chooses smallest
             outDistances, // nq*k
             outIndices,   // nq*k
-            stream);
+            stream,
+            outIndices2);
 }
 
 template <typename CentroidT>
@@ -583,7 +585,8 @@ void runPQScanMultiPassNoPrecomputed(
         Tensor<float, 2, true>& outDistances,
         // output
         Tensor<Index::idx_t, 2, true>& outIndices,
-        GpuResources* res) {
+        GpuResources* res,
+        Tensor<Index::idx_t, 2, true>& outIndices2) {
     constexpr int kMinQueryTileSize = 8;
     constexpr int kMaxQueryTileSize = 128;
     constexpr int kThrustMemSize = 16384;
@@ -750,6 +753,8 @@ void runPQScanMultiPassNoPrecomputed(
                 outDistances.narrowOutermost(query, numQueriesInTile);
         auto outIndicesView =
                 outIndices.narrowOutermost(query, numQueriesInTile);
+        auto outIndicesView2 =
+                outIndices2.narrowOutermost(query, numQueriesInTile);
 
         runMultiPassTile(
                 res,
@@ -779,7 +784,8 @@ void runPQScanMultiPassNoPrecomputed(
                 metric,
                 outDistanceView,
                 outIndicesView,
-                streams[curStream]);
+                streams[curStream],
+                outIndicesView2);
 
         curStream = (curStream + 1) % 2;
     }
