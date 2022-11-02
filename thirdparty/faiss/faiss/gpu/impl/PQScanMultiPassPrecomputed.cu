@@ -912,7 +912,7 @@ void runPQScanMultiPassPrecomputed(
     //    if (FORCE_QUERY_TILE_SIZE != -1) {
     //        queryTileSize = FORCE_QUERY_TILE_SIZE;
     //    }
-    printf("queryTileSize %d\n", queryTileSize);
+    //printf("queryTileSize %d\n", queryTileSize);
 
     // FIXME: we should adjust queryTileSize to deal with this, since
     // indexing is in int32

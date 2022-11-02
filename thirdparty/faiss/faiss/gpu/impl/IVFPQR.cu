@@ -335,27 +335,22 @@ void IVFPQR::query(
     // These are caught at a higher level
     FAISS_ASSERT(nprobe <= GPU_MAX_SELECTION_K);
     FAISS_ASSERT(realK <= GPU_MAX_SELECTION_K);
-
-    auto stream = resources_->getDefaultStreamCurrentDevice();
-    int nq = queries.getSize(0);
-
-    DeviceTensor<float, 2, true> tmp_distances(
-            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
-    DeviceTensor<Index::idx_t, 2, true> tmp_labels(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
-    DeviceTensor<Index::idx_t, 2, true> tmp_labels2(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
-    Tensor<float, 2, true> tmpOutDistances(tmp_distances.data(), {nq, realK});
-    Tensor<Index::idx_t, 2, true> vectorIndices(
-            const_cast<Index::idx_t*>(tmp_labels.data()), {nq, realK});
-    Tensor<Index::idx_t, 2, true> listNoAndOffsets(
-            const_cast<Index::idx_t*>(tmp_labels2.data()), {nq, realK});
-
-    nprobe = std::min(nprobe, quantizer_->getSize());
-
     FAISS_ASSERT(queries.getSize(1) == dim_);
     FAISS_ASSERT(outDistances.getSize(0) == queries.getSize(0));
     FAISS_ASSERT(outIndices.getSize(0) == queries.getSize(0));
+
+    auto stream = resources_->getDefaultStreamCurrentDevice();
+    int nq = queries.getSize(0);
+    nprobe = std::min(nprobe, quantizer_->getSize());
+
+    // FixMe:tmpOutDistances is useless
+    DeviceTensor<float, 2, true> tmpOutDistances(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+    DeviceTensor<Index::idx_t, 2, true> vectorIndices(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+    DeviceTensor<Index::idx_t, 2, true> listNoAndOffsets(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+
 
     // Reserve space for the closest coarse centroids
     // 2 代表二维数组，分配大小queries.getSize(0) * nprobe。
@@ -363,12 +358,39 @@ void IVFPQR::query(
     // 具体见Tensor-inl.cuh和DeviceTensor-inl.cuh， 分配位置见AllocType
     DeviceTensor<float, 2, true> coarseDistances(
             resources_,
-            makeDevAlloc(AllocType::Other, stream),
-            {queries.getSize(0), nprobe});
+            makeTempAlloc(AllocType::Other, stream),
+            {nq, nprobe});
     DeviceTensor<int, 2, true> coarseIndices(
             resources_,
-            makeDevAlloc(AllocType::Other, stream),
-            {queries.getSize(0), nprobe});
+            makeTempAlloc(AllocType::Other, stream),
+            {nq, nprobe});
+
+    //残差
+    DeviceTensor<float, 3, true> residual1(
+            resources_,
+            makeTempAlloc(AllocType::Other, stream),
+            {nq, realK, dim_});
+
+    DeviceTensor<int, 2, true> listIds(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+    DeviceTensor<int, 2, true> listOffsets(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+
+    DeviceTensor<float, 3, true> listCoarseCentroids(
+            resources_,
+            makeTempAlloc(AllocType::Other, stream),
+            {nq, realK, dim_});
+
+    DeviceTensor<float, 3, true> residual2(
+            resources_,
+            makeTempAlloc(AllocType::Other, stream),
+            {nq, realK, dim_});
+
+    DeviceTensor<float, 2, true> codeDistances(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
+
+    DeviceTensor<int, 2, true> reRankIndices(
+            resources_, makeTempAlloc(AllocType::Other, stream), {nq, topK});
 
     //一级索引查询
     // Find the `nprobe` closest coarse centroids; we can use int
@@ -413,16 +435,7 @@ void IVFPQR::query(
         cout << "ivfpq::query done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
-    //残差
-    DeviceTensor<float, 3, true> residual1(
-            resources_,
-            makeDevAlloc(AllocType::Other, stream),
-            {nq, realK, dim_});
 
-    DeviceTensor<int, 2, true> listIds(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
-    DeviceTensor<int, 2, true> listOffsets(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     {
         auto grid = dim3(nq);
         auto block = dim3(min(256, realK));
@@ -434,12 +447,8 @@ void IVFPQR::query(
         cudaDeviceSynchronize();
         sw.stop();
         cout << "calculateListId done " << sw.getElapsedTime() << endl;
+        sw.restart();
     }
-    sw.restart();
-    DeviceTensor<float, 3, true> listCoarseCentroids(
-            resources_,
-            makeDevAlloc(AllocType::Other, stream),
-            {nq, realK, dim_});
 
     //计算query和"result所在的粗聚类"的残差
     quantizer_->reconstruct(listIds, listCoarseCentroids);
@@ -450,6 +459,7 @@ void IVFPQR::query(
         cout << "reconstruct done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
+
     {
         auto grid = dim3(nq, realK);
         auto block = dim3(min(dim_, 256));
@@ -497,10 +507,6 @@ void IVFPQR::query(
         cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
-    DeviceTensor<float, 3, true> residual2(
-            resources_,
-            makeDevAlloc(AllocType::Other, stream),
-            {nq, realK, dim_});
     refinePQ.calculateResidualVector2(vectorIndices, residual2);
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
@@ -510,8 +516,6 @@ void IVFPQR::query(
         sw.restart();
     }
 
-    DeviceTensor<float, 2, true> codeDistances(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, realK});
     {
         auto grid = dim3(nq);
         auto block = dim3(min(256, realK));
@@ -528,8 +532,6 @@ void IVFPQR::query(
     // printArray<<<grid, block, 0, stream>>>(codeDistances);
 
 
-    DeviceTensor<int, 2, true> reRankIndices(
-            resources_, makeDevAlloc(AllocType::Other, stream), {nq, topK});
     {
         runBlockSelect(
                 codeDistances,
@@ -543,9 +545,10 @@ void IVFPQR::query(
         cudaStreamSynchronize(stream);
         cudaDeviceSynchronize();
         sw.stop();
-        cout << "sortByDistance done " << sw.getElapsedTime() << endl;
+        cout << "runBlockSelect done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
+
     {
         auto grid = dim3(nq);
         auto block = dim3(min(256, topK));
@@ -556,7 +559,7 @@ void IVFPQR::query(
         cudaStreamSynchronize(stream);
         cudaDeviceSynchronize();
         sw.stop();
-        cout << "extractData done " << sw.getElapsedTime() << endl;
+        cout << "extractIndex done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
 
