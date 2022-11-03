@@ -338,6 +338,7 @@ void IVFPQR::query(
     FAISS_ASSERT(queries.getSize(1) == dim_);
     FAISS_ASSERT(outDistances.getSize(0) == queries.getSize(0));
     FAISS_ASSERT(outIndices.getSize(0) == queries.getSize(0));
+    FAISS_ASSERT(indicesOptions_ == INDICES_GPU_ALL);
 
     auto stream = resources_->getDefaultStreamCurrentDevice();
     int nq = queries.getSize(0);
@@ -481,25 +482,7 @@ void IVFPQR::query(
         cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
-    // If the GPU isn't storing indices (they are on the CPU side), we
-    // need to perform the re-mapping here
-    // FIXME: we might ultimately be calling this function with inputs
-    // from the CPU, these are unnecessary copies
-    if (indicesOptions_ == INDICES_CPU) {
-        HostTensor<Index::idx_t, 2, true> hostOutIndices(vectorIndices, stream);
 
-        ivfOffsetToUserIndex(
-                hostOutIndices.data(),
-                numLists_,
-                hostOutIndices.getSize(0),
-                hostOutIndices.getSize(1),
-                listOffsetToUserIndex_);
-
-        // Copy back to GPU, since the input to this function is on the
-        // GPU
-        //origin vector index
-        vectorIndices.copyFrom(hostOutIndices, stream);
-    }
     if (debug_flag & PRINT_TIME) {
         cudaStreamSynchronize(stream);
         cudaDeviceSynchronize();
