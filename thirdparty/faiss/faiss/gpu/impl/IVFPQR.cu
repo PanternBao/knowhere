@@ -86,6 +86,91 @@ IVFPQR::IVFPQR(
 
 IVFPQR::~IVFPQR() {}
 
+__global__ void refinePQDistance(
+        Tensor<float, 2, true> queries,
+        Tensor<int, 2, true> listIds,
+        Tensor<int, 2, true> listOffsets,
+        void** listCodes,
+        /// (sub q)(code id)(sub dim)
+        Tensor<float, 3, true> pqCentroidsMiddleCode_,
+        Tensor<float, 3, true> listCoarseCentroids,
+        Tensor<float, 3, true> refineCentroidsMiddleCode_,
+        Tensor<Index::idx_t, 2, true> vectorIndices, // nq * k*kFactor
+        Tensor<uint8_t, 2, true> refineCodes,
+        int debug_flag) {
+    int dimsPerSubQuantizer = pqCentroidsMiddleCode_.getSize(2);
+    int numSubQuantizers_ = pqCentroidsMiddleCode_.getSize(0);
+    int refineDimsPerSubQuantizer = refineCentroidsMiddleCode_.getSize(2);
+    int dim = dimsPerSubQuantizer * numSubQuantizers_;
+    int nq = listIds.getSize(0);
+    int topK = listIds.getSize(1);
+    int i = blockIdx.x;
+    auto queryData = queries[i];
+    int j = blockIdx.y;
+    int listId = listIds[i][j];
+    int listOffset = listOffsets[i][j];
+    auto coarseCentroid = listCoarseCentroids[i][j];
+
+    Index::idx_t id = vectorIndices[i][j];
+    if (debug_flag & PRINT_RESIDUAL2_CODE) {
+        printf("residual 2-id %ld\n", id);
+    }
+
+    if (listId == -1) {
+        printf("listid is -1\n");
+        return;
+    }
+    //float data = 0;
+    for (int currentDim = threadIdx.x; currentDim < dim;
+         currentDim += blockDim.x) {
+        int q = currentDim / dimsPerSubQuantizer;
+        int l = currentDim % dimsPerSubQuantizer;
+
+        uint8_t codeId = ((
+                uint8_t*)listCodes[listId])[listOffset * numSubQuantizers_ + q];
+
+        float residual1 = queryData[currentDim] -
+                coarseCentroid[currentDim] -
+                pqCentroidsMiddleCode_[q][codeId][l];
+
+        int refineQ = currentDim / refineDimsPerSubQuantizer;
+        int refineL = currentDim % refineDimsPerSubQuantizer;
+        uint8_t refine_codeId = refineCodes[id][refineQ];
+        if (debug_flag & PRINT_RESIDUAL2_CODE) {
+            printf("residual 2-code-id %d\n", (int)refine_codeId);
+        }
+        float residual2 = refineCentroidsMiddleCode_[refineQ][refine_codeId][refineL];
+        float tmp = residual1 - residual2;
+        coarseCentroid[currentDim]= tmp * tmp;
+        //data += tmp * tmp;
+    }
+    //outCodeDistances[i][j] = data;
+}
+
+// todo :__reduce_add_sync
+__global__ void rollupDistances(
+        Tensor<float, 3, true> distances,
+        Tensor<float, 2, true> outCodeDistances,
+        int debug_flag) {
+    int i = blockIdx.x;
+    int topK = distances.getSize(1);
+    int dim = distances.getSize(2);
+    for (int j = threadIdx.x; j < topK; j += blockDim.x) {
+        float data = 0;
+
+        for (int m = 0; m < dim; m++) {
+            data += distances[i][j][m];
+        }
+        if (debug_flag & PRINT_DISTANCE) {
+            printf("l2 dis %f\t", data);
+            if (j == distances.getSize(1) - 1) {
+                printf("\n");
+            }
+        }
+        outCodeDistances[i][j] = data;
+    }
+}
+
 __global__ void runPQResidualVector1(
         Tensor<float, 3, true> residual1,
         Tensor<float, 2, true> queries,
@@ -131,6 +216,7 @@ __global__ void runPQResidualVector1(
         residual1[i][j][currentDim] = queryData[currentDim] -
                 coarseCentroid[currentDim] -
                 pqCentroidsMiddleCode_[q][codeId][l];
+
     }
 
     if (debug_flag & PRINT_RESIDUAL1) {
@@ -366,11 +452,6 @@ void IVFPQR::query(
             makeTempAlloc(AllocType::Other, stream),
             {nq, nprobe});
 
-    //残差
-    DeviceTensor<float, 3, true> residual1(
-            resources_,
-            makeTempAlloc(AllocType::Other, stream),
-            {nq, realK, dim_});
 
     DeviceTensor<int, 2, true> listIds(
             resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
@@ -382,10 +463,6 @@ void IVFPQR::query(
             makeTempAlloc(AllocType::Other, stream),
             {nq, realK, dim_});
 
-    DeviceTensor<float, 3, true> residual2(
-            resources_,
-            makeTempAlloc(AllocType::Other, stream),
-            {nq, realK, dim_});
 
     DeviceTensor<float, 2, true> codeDistances(
             resources_, makeTempAlloc(AllocType::Other, stream), {nq, realK});
@@ -460,59 +537,90 @@ void IVFPQR::query(
         cout << "reconstruct done " << sw.getElapsedTime() << endl;
         sw.restart();
     }
-
+    //listCoarseCentroids will be computed and rewrite
     {
         auto grid = dim3(nq, realK);
         auto block = dim3(min(dim_, 256));
-        runPQResidualVector1<<<grid, block, 0, stream>>>(
-                residual1,
+        refinePQDistance<<<grid, block, 0, stream>>>(
                 queries,
                 listIds,
                 listOffsets,
                 deviceListDataPointers_.data().get(),
-                pqCentroidsInnermostCode_,
                 pqCentroidsMiddleCode_,
                 listCoarseCentroids,
+                refinePQ.getPQCentroids(),
+                vectorIndices,
+                refinePQ.refineCodes_,
                 debug_flag);
     }
-    if (debug_flag & PRINT_TIME) {
-        cudaStreamSynchronize(stream);
-        cudaDeviceSynchronize();
-        sw.stop();
-        cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
-        sw.restart();
-    }
-
-    if (debug_flag & PRINT_TIME) {
-        cudaStreamSynchronize(stream);
-        cudaDeviceSynchronize();
-        sw.stop();
-        cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
-        sw.restart();
-    }
-    refinePQ.calculateResidualVector2(vectorIndices, residual2);
-    if (debug_flag & PRINT_TIME) {
-        cudaStreamSynchronize(stream);
-        cudaDeviceSynchronize();
-        sw.stop();
-        cout << "calculateResidualVector2 done " << sw.getElapsedTime() << endl;
-        sw.restart();
-    }
-
     {
         auto grid = dim3(nq);
         auto block = dim3(min(256, realK));
-        pqCodeDistances<<<grid, block, 0, stream>>>(
-                residual1, residual2, codeDistances, debug_flag);
+        rollupDistances<<<grid, block, 0, stream>>>(
+                listCoarseCentroids, codeDistances, debug_flag);
     }
-    if (debug_flag & PRINT_TIME) {
-        cudaStreamSynchronize(stream);
-        cudaDeviceSynchronize();
-        sw.stop();
-        cout << "pqCodeDistances done " << sw.getElapsedTime() << endl;
-        sw.restart();
-    }
-    // printArray<<<grid, block, 0, stream>>>(codeDistances);
+    //    //残差
+//    DeviceTensor<float, 3, true> residual1(
+//            resources_,
+//            makeTempAlloc(AllocType::Other, stream),
+//            {nq, realK, dim_});
+
+//    {
+//        auto grid = dim3(nq, realK);
+//        auto block = dim3(min(dim_, 256));
+//        runPQResidualVector1<<<grid, block, 0, stream>>>(
+//                residual1,
+//                queries,
+//                listIds,
+//                listOffsets,
+//                deviceListDataPointers_.data().get(),
+//                pqCentroidsInnermostCode_,
+//                pqCentroidsMiddleCode_,
+//                listCoarseCentroids,
+//                debug_flag);
+//    }
+//    if (debug_flag & PRINT_TIME) {
+//        cudaStreamSynchronize(stream);
+//        cudaDeviceSynchronize();
+//        sw.stop();
+//        cout << "runPQResidualVector1 done " << sw.getElapsedTime() << endl;
+//        sw.restart();
+//    }
+//
+//    if (debug_flag & PRINT_TIME) {
+//        cudaStreamSynchronize(stream);
+//        cudaDeviceSynchronize();
+//        sw.stop();
+//        cout << "convert to cpu index done " << sw.getElapsedTime() << endl;
+//        sw.restart();
+//    }
+//
+//        DeviceTensor<float, 3, true> residual2(
+//        resources_,
+//        makeTempAlloc(AllocType::Other, stream),
+//        {nq, realK, dim_});
+//    refinePQ.calculateResidualVector2(vectorIndices, residual2);
+//    if (debug_flag & PRINT_TIME) {
+//        cudaStreamSynchronize(stream);
+//        cudaDeviceSynchronize();
+//        sw.stop();
+//        cout << "calculateResidualVector2 done " << sw.getElapsedTime() << endl;
+//        sw.restart();
+//    }
+//
+//    {
+//        auto grid = dim3(nq);
+//        auto block = dim3(min(256, realK));
+//        pqCodeDistances<<<grid, block, 0, stream>>>(
+//                residual1, residual2, codeDistances, debug_flag);
+//    }
+//    if (debug_flag & PRINT_TIME) {
+//        cudaStreamSynchronize(stream);
+//        cudaDeviceSynchronize();
+//        sw.stop();
+//        cout << "pqCodeDistances done " << sw.getElapsedTime() << endl;
+//        sw.restart();
+//    }
 
 
     {
