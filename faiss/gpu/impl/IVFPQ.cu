@@ -70,7 +70,7 @@ IVFPQ::IVFPQ(
     //            isSupportedPQCodeLength(numSubQuantizers_));
     //    printf("init ok-1");
     setPQCentroids_(pqCentroidData);
-    printf("init ok\n");
+    //printf("init ok\n");
 }
 
 IVFPQ::~IVFPQ() {}

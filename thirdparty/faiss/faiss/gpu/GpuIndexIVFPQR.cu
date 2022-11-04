@@ -54,7 +54,7 @@ GpuIndexIVFPQR::GpuIndexIVFPQR(
 GpuIndexIVFPQR::~GpuIndexIVFPQR() {}
 
 void GpuIndexIVFPQR::copyFrom(const faiss::IndexIVFPQR* index) {
-    cout << "init ivfpqr" << endl;
+    //cout << "init ivfpqr" << endl;
     DeviceScope scope(config_.device);
 
     GpuIndexIVF::copyFrom(index);
