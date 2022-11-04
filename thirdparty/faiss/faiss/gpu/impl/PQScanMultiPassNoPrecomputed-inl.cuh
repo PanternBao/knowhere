@@ -4,6 +4,8 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/gpu/utils/DeviceUtils.h>
@@ -177,7 +179,6 @@ struct LoadCodeDistances {
 
 template <int NumSubQuantizers, typename LookupT, typename LookupVecT>
 __global__ void pqScanNoPrecomputedMultiPass(
-        char* codeDistGlobal,
         long smem,
         Tensor<float, 2, true> queries,
         Tensor<float, 3, true> pqCentroids,
@@ -190,11 +191,8 @@ __global__ void pqScanNoPrecomputedMultiPass(
 ) {
     const auto codesPerSubQuantizer = pqCentroids.getSize(2);
 
-    // Where the pq code -> residual distance is stored
-    // char* smemCodeDistances = (char*)malloc(smem);
-    // LookupT* codeDist = (LookupT*)smemCodeDistances;
-    int blockId = blockIdx.y * gridDim.x + blockIdx.x;
-    LookupT* codeDist = (LookupT*)(codeDistGlobal + smem * blockId);
+    extern __shared__ char smemCodeDistances[];
+    LookupT* codeDist = (LookupT*)smemCodeDistances;
 
     // Each block handles a single query
     auto queryId = blockIdx.y;
@@ -431,27 +429,30 @@ void runMultiPassTile(
         smem *= numSubQuantizers * numSubQuantizerCodes;
         // FAISS_ASSERT(smem <= getMaxSharedMemPerBlockCurrentDevice());
 
-#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                       \
-    do {                                                                    \
-        auto codeDistancesT = codeDistances.toTensor<LOOKUP_T>();           \
-        char* codeDistGlobal;                                               \
-        cudaMalloc(                                                         \
-                (void**)&codeDistGlobal,                                    \
-                smem* coarseIndices.getSize(1) * coarseIndices.getSize(0)); \
-                                                                            \
-        pqScanNoPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T>     \
-                <<<grid, block, 0, stream>>>(                               \
-                        codeDistGlobal,                                     \
-                        smem,                                               \
-                        queries,                                            \
-                        pqCentroidsInnermostCode,                           \
-                        coarseIndices,                                      \
-                        codeDistancesT,                                     \
-                        listCodes.data().get(),                             \
-                        listLengths.data().get(),                           \
-                        prefixSumOffsets,                                   \
-                        allDistances);                                      \
-        cudaFree(codeDistGlobal);                                           \
+#define RUN_PQ_OPT(NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T)                   \
+    do {                                                                \
+        auto codeDistancesT = codeDistances.toTensor<LOOKUP_T>();       \
+                                                                        \
+        if (NUM_SUB_Q == 128) {                                         \
+            cudaFuncSetAttribute(                                       \
+                    pqScanNoPrecomputedMultiPass<                       \
+                            NUM_SUB_Q,                                  \
+                            LOOKUP_T,                                   \
+                            LOOKUP_VEC_T>,                              \
+                    cudaFuncAttributeMaxDynamicSharedMemorySize,        \
+                    64 * 1024);                                         \
+        }                                                               \
+        pqScanNoPrecomputedMultiPass<NUM_SUB_Q, LOOKUP_T, LOOKUP_VEC_T> \
+                <<<grid, block, smem, stream>>>(                           \
+                        smem,                                           \
+                        queries,                                        \
+                        pqCentroidsInnermostCode,                       \
+                        coarseIndices,                                  \
+                        codeDistancesT,                                 \
+                        listCodes.data().get(),                         \
+                        listLengths.data().get(),                       \
+                        prefixSumOffsets,                               \
+                        allDistances);                                  \
     } while (0)
 
 #define RUN_PQ(NUM_SUB_Q)                         \
