@@ -419,7 +419,7 @@ void IndexIVF::search(
         std::mutex exception_mutex;
         std::string exception_string;
 
-#pragma omp parallel for if (nt > 1)
+#pragma omp parallel for num_threads(nt) if (nt > 1)
         for (idx_t slice = 0; slice < nt; slice++) {
             IndexIVFStats local_stats;
             idx_t i0 = n * slice / nt;

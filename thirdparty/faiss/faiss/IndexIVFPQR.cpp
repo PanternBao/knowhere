@@ -17,6 +17,7 @@
 
 #include <faiss/FaissHook.h>
 #include <faiss/impl/FaissAssert.h>
+#include <omp.h>
 #include <iostream>
 namespace faiss {
 
@@ -133,7 +134,8 @@ void IndexIVFPQR::search_preassigned(
 
     // 3rd level refinement
     size_t n_refine = 0;
-#pragma omp parallel reduction(+ : n_refine)
+    int nt = std::min(int(n), omp_get_max_threads());
+#pragma omp parallel num_threads(nt) reduction(+ : n_refine)
     {
         // tmp buffers
         float* residual_1 = new float[2 * d];
