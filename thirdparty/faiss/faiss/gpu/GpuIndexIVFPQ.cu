@@ -59,7 +59,10 @@ GpuIndexIVFPQ::GpuIndexIVFPQ(
           bitsPerCode_(0),
           reserveMemoryVecs_(0) {
     if (needInit) {
+        // is pq
         copyFrom(index);
+    } else {
+        // is pqr
     }
 }
 
@@ -132,13 +135,13 @@ void GpuIndexIVFPQ::copyFrom(const faiss::IndexIVFPQ* index) {
             (float*)index->pq.centroids.data(),
             ivfpqConfig_.indicesOptions,
             config_.memorySpace));
-    //printf("index reset ok\n");
+    // printf("index reset ok\n");
     // Doesn't make sense to reserve memory here
     index_->setPrecomputedCodes(usePrecomputedTables_);
 
     // Copy all of the IVF data
     index_->copyInvertedListsFrom(index->invlists);
-    //printf("index prepare ok \n");
+    // printf("index prepare ok \n");
 }
 
 void GpuIndexIVFPQ::copyTo(faiss::IndexIVFPQ* index) const {

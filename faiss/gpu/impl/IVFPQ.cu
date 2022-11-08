@@ -70,7 +70,7 @@ IVFPQ::IVFPQ(
     //            isSupportedPQCodeLength(numSubQuantizers_));
     //    printf("init ok-1");
     setPQCentroids_(pqCentroidData);
-    //printf("init ok\n");
+    // printf("init ok\n");
 }
 
 IVFPQ::~IVFPQ() {}
@@ -490,7 +490,7 @@ void IVFPQ::precomputeCodesT_() {
         runSumAlongColumns(
                 subQuantizerNorms, coarsePQProductTransposedView, stream);
     }
-    //printf("coarseCentroids.getSize(0) %d\n", coarseCentroids.getSize(0));
+    // printf("coarseCentroids.getSize(0) %d\n", coarseCentroids.getSize(0));
     // We added into the view, so `coarsePQProductTransposed` is now our
     // precomputed term 2.
     if (useFloat16LookupTables_) {
