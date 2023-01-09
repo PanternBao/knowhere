@@ -569,6 +569,11 @@ void Clustering::train_encoded(
             StopWatch sw = StopWatch::start();
             centroids.resize(d * k);
             sw.stop();
+            if (train_type == 1) {
+                indexIVF_stats.train_q1_preprocess2_time.add(sw);
+            } else if (train_type == 2) {
+            }
+            sw.restart();
             if (!codec) {
                 for (int i = n_input_centroids; i < k; i++) {
                     memcpy(&centroids[i * d], x + centroids_index[i] * line_size, line_size);
@@ -613,12 +618,6 @@ void Clustering::train_encoded(
             if (!codec) {
                 index.assign(nx, reinterpret_cast<const float *>(x),
                              assign.get(), dis.get());
-                index.search( //找到每个数据最近的中心 use IndexFLAT::search
-                        nx,
-                        reinterpret_cast<const float*>(x),
-                        1,
-                        dis.get(),
-                        assign.get());
             } else {
                 // search by blocks of decode_block_size vectors
                 size_t code_size = codec->sa_code_size();

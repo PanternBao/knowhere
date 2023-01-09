@@ -114,6 +114,7 @@ void IndexIVFPQ::train_residual_o(idx_t n, const float* x, float* residuals_2) {
     sw.stop();
     indexIVF_stats.train_q2_time.add(sw);
 
+
     if (do_polysemous_training) {
         if (verbose)
             printf("doing polysemous training for PQ\n");

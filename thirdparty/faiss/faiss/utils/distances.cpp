@@ -429,11 +429,19 @@ void exhaustive_L2sqr_blas(
                     ip_line++;
                 }
             }
+            sw3.stop();
+            lookup_time += sw3.getElapsedTime();
+            StopWatch sw2 = StopWatch::start();
             res.add_results(j0, j1, ip_block.get(), bitset);
+            sw2.stop();
+            add_time += sw2.getElapsedTime();
         }
         res.end_multiple();
         InterruptCallback::check();
     }
+    sw.stop();
+    printf("step3 %f \nstep4 %f\nstep5 %f\n", muli_time, lookup_time, add_time);
+    printf("step3-5 %f\n", sw.getElapsedTime());
 }
 
 template <class DistanceCorrection, class ResultHandler>
