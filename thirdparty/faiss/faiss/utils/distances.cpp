@@ -21,7 +21,7 @@
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/impl/ResultHandler.h>
-#include <StopWatch.h>
+#include <faiss/utils/StopWatch.h>
 #include <faiss/utils/utils.h>
 
 #ifndef FINTEGER
@@ -376,7 +376,7 @@ void exhaustive_L2sqr_blas(
     sw.stop();
     printf("step2 %f\n", sw.getElapsedTime());
     sw.restart();
-    double muli_time = 0, lookup_time = 0, add_time = 0,lookup2_time=0;
+    double muli_time = 0, lookup_time = 0, add_time = 0, lookup2_time=0;
 
     for (size_t i0 = 0; i0 < nx; i0 += bs_x) {
         size_t i1 = i0 + bs_x;
@@ -521,20 +521,11 @@ static void knn_jaccard_blas(
                     ip_line++;
                 }
             }
-            res.add_results(j0, j1, ip_block);
-            sw3.stop();
-            lookup_time += sw3.getElapsedTime();
-            StopWatch sw2 = StopWatch::start();
             res.add_results(j0, j1, ip_block.get());
-            sw2.stop();
-            add_time += sw2.getElapsedTime();
         }
         res.end_multiple();
         InterruptCallback::check();
     }
-    sw.stop();
-    printf("step3 %f \nstep4 %f\nstep5 %f\n", muli_time,lookup_time,add_time);
-    printf("step3-5 %f\n", sw.getElapsedTime());
 }
 
 } // anonymous namespace

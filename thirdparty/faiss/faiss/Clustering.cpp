@@ -25,7 +25,7 @@
 #include <faiss/utils/distances.h>
 #include <faiss/utils/random.h>
 #include <faiss/utils/utils.h>
-#include <IndexIVF.h>
+#include <faiss/IndexIVF.h>
 
 namespace faiss {
 
