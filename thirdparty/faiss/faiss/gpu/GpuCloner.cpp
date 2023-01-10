@@ -280,7 +280,7 @@ Index* ToGpuCloner::clone_Index(const Index* index) {
         config.flatConfig.storeTransposed = storeTransposed;
         config.useFloat16LookupTables = useFloat16;
         config.usePrecomputedTables = usePrecomputed;
-        config.interleavedLayout=interleavedLayout;
+        config.interleavedLayout = interleavedLayout;
 
         GpuIndexIVFPQ* res = new GpuIndexIVFPQ(provider, ipq, config);
 
