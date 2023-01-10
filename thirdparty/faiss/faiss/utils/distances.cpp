@@ -534,7 +534,7 @@ static void knn_jaccard_blas(
                     ip_line++;
                 }
             }
-            res.add_results(j0, j1, ip_block.get());
+            res.add_results(j0, j1, ip_block);
         }
         res.end_multiple();
         InterruptCallback::check();
