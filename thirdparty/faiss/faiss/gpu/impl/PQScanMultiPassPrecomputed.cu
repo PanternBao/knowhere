@@ -807,7 +807,11 @@ void runMultiPassTile(
 
     // k-select the output in chunks, to increase parallelism
     runPass1SelectLists(
+            listIndices,
+            indicesOptions,
             prefixSumOffsets,
+            topQueryToCentroid,
+            bitset,
             allDistances,
             topQueryToCentroid.getSize(1),
             k,
@@ -846,6 +850,7 @@ void runPQScanMultiPassPrecomputed(
         // (query id)(sub q)(code id)
         NoTypeTensor<3, true>& precompTerm3,
         Tensor<int, 2, true>& topQueryToCentroid,
+        Tensor<uint8_t, 1, true>& bitset,
         bool useFloat16Lookup,
         bool interleavedCodeLayout,
         int bitsPerSubQuantizer,
@@ -1012,6 +1017,7 @@ void runPQScanMultiPassPrecomputed(
                 precompTerm2,
                 term3View,
                 coarseIndicesView,
+                bitset,
                 useFloat16Lookup,
                 interleavedCodeLayout,
                 bitsPerSubQuantizer,
