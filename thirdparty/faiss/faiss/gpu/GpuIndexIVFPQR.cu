@@ -127,7 +127,7 @@ void GpuIndexIVFPQR::searchImpl_(
         const float* x,
         int k,
         float* distances,
-        Index::idx_t* labels
+        Index::idx_t* labels,
         const BitsetView bitset) const {
     // Device is already set in GpuIndex::search
     FAISS_ASSERT(index_);
