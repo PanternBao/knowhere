@@ -134,6 +134,8 @@ void GpuIndexIVFPQR::searchImpl_(
     FAISS_ASSERT(n > 0);
     FAISS_THROW_IF_NOT(nprobe > 0 && nprobe <= nlist);
 
+    auto stream = resources_->getDefaultStream(config_.device);
+
     // Data is already resident on the GPU
     Tensor<float, 2, true> queries(const_cast<float*>(x), {n, (int)this->d});
     Tensor<float, 2, true> outDistances(distances, {n, k});
@@ -153,7 +155,6 @@ void GpuIndexIVFPQR::searchImpl_(
                         nprobe,
                         k,
                         outDistances,
-                        outLabels,
                         outLabels);
     } else {
         auto bitsetDevice = toDeviceTemporary<uint8_t, 1>(
@@ -168,7 +169,6 @@ void GpuIndexIVFPQR::searchImpl_(
                         nprobe,
                         k,
                         outDistances,
-                        outLabels,
                         outLabels);
     }
 }
