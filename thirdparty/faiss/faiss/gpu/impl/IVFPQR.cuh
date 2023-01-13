@@ -41,6 +41,7 @@ class IVFPQR : public IVFPQ {
     void setPrecomputedCodes(bool enable);
     virtual void query(
             Tensor<float, 2, true>& queries,
+            Tensor<uint8_t, 1, true>& bitset,
             int nprobe,
             int topK,
             Tensor<float, 2, true>& outDistances,

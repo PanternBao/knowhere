@@ -408,6 +408,7 @@ void IVFPQR::setPrecomputedCodes(bool enable) {
 
 void IVFPQR::query(
         Tensor<float, 2, true>& queries,
+        Tensor<uint8_t, 1, true>& bitset,
         int nprobe,
         int topK,
         Tensor<float, 2, true>& outDistances,
@@ -470,11 +471,15 @@ void IVFPQR::query(
     DeviceTensor<int, 2, true> reRankIndices(
             resources_, makeTempAlloc(AllocType::Other, stream), {nq, topK});
 
+    DeviceTensor<uint8_t, 1, true> coarseBitset(
+            resources_, makeTempAlloc(AllocType::Other, stream), {0});
+
     //一级索引查询
     // Find the `nprobe` closest coarse centroids; we can use int
     // indices both internally and externally
     quantizer_->query(
             queries,
+            coarseBitset,
             nprobe,
             metric_,
             metricArg_,
@@ -490,6 +495,7 @@ void IVFPQR::query(
 
         runPQPrecomputedCodes_(
                 queries,
+                bitset,
                 coarseDistances,
                 coarseIndices,
                 realK,
@@ -499,6 +505,7 @@ void IVFPQR::query(
     } else {
         runPQNoPrecomputedCodes_(
                 queries,
+                bitset,
                 coarseDistances,
                 coarseIndices,
                 realK,
