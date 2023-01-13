@@ -633,6 +633,7 @@ void IVFPQR::query(
     {
         runBlockSelect(
                 codeDistances,
+                bitset,
                 outDistances,
                 reRankIndices,
                 false,
