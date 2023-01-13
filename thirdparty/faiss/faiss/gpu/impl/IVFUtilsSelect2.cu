@@ -21,33 +21,33 @@
 namespace faiss {
 namespace gpu {
 
-// This is warp divergence central, but this is really a final step
-// and happening a small number of times
-inline __device__ int binarySearchForBucket(
-        int* prefixSumOffsets,
-        int size,
-        int val) {
-    int start = 0;
-    int end = size;
-
-    while (end - start > 0) {
-        int mid = start + (end - start) / 2;
-
-        int midVal = prefixSumOffsets[mid];
-
-        // Find the first bucket that we are <=
-        if (midVal <= val) {
-            start = mid + 1;
-        } else {
-            end = mid;
-        }
-    }
-
-    // We must find the bucket that it is in
-    assert(start != size);
-
-    return start;
-}
+//// This is warp divergence central, but this is really a final step
+//// and happening a small number of times
+//inline __device__ int binarySearchForBucket(
+//        int* prefixSumOffsets,
+//        int size,
+//        int val) {
+//    int start = 0;
+//    int end = size;
+//
+//    while (end - start > 0) {
+//        int mid = start + (end - start) / 2;
+//
+//        int midVal = prefixSumOffsets[mid];
+//
+//        // Find the first bucket that we are <=
+//        if (midVal <= val) {
+//            start = mid + 1;
+//        } else {
+//            end = mid;
+//        }
+//    }
+//
+//    // We must find the bucket that it is in
+//    assert(start != size);
+//
+//    return start;
+//}
 
 template <int ThreadsPerBlock, int NumWarpQ, int NumThreadQ, bool Dir>
 __global__ void pass2SelectLists(

@@ -52,7 +52,8 @@ class GpuIndexIVFPQR : public GpuIndexIVFPQ {
             const float* x,
             int k,
             float* distances,
-            Index::idx_t* labels) const;
+            Index::idx_t* labels,
+            const BitsetView bitset = nullptr) const;
     // std::unique_ptr<RefinePQ> refine_pq;
     //    int kFactor = 4;
 

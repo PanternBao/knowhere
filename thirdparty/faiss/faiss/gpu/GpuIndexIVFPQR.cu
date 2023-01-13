@@ -127,7 +127,8 @@ void GpuIndexIVFPQR::searchImpl_(
         const float* x,
         int k,
         float* distances,
-        Index::idx_t* labels) const {
+        Index::idx_t* labels
+        const BitsetView bitset) const {
     // Device is already set in GpuIndex::search
     FAISS_ASSERT(index_);
     FAISS_ASSERT(n > 0);
@@ -139,7 +140,37 @@ void GpuIndexIVFPQR::searchImpl_(
     Tensor<Index::idx_t, 2, true> outLabels(
             const_cast<Index::idx_t*>(labels), {n, k});
 
-    ((IVFPQR*)index_.get())->query(queries, nprobe, k, outDistances, outLabels);
+    if (bitset.empty()) {
+        auto bitsetDevice = toDeviceTemporary<uint8_t, 1>(
+                resources_.get(),
+                config_.device,
+                nullptr,
+                stream,
+                {0});
+        ((IVFPQR*)index_.get())
+                ->query(queries,
+                        bitsetDevice,
+                        nprobe,
+                        k,
+                        outDistances,
+                        outLabels,
+                        outLabels);
+    } else {
+        auto bitsetDevice = toDeviceTemporary<uint8_t, 1>(
+                resources_.get(),
+                config_.device,
+                const_cast<uint8_t*>(bitset.data()),
+                stream,
+                {(int)bitset.byte_size()});
+        ((IVFPQR*)index_.get())
+                ->query(queries,
+                        bitsetDevice,
+                        nprobe,
+                        k,
+                        outDistances,
+                        outLabels,
+                        outLabels);
+    }
 }
 
 } // namespace gpu
