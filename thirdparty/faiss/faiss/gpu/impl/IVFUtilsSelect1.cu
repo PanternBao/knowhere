@@ -269,7 +269,7 @@ void runPass1SelectLists(
                                                                             \
         if (use_memory <= 64 * 1024) {                                      \
             pass1SelectLists<BLOCK, NUM_WARP_Q, NUM_THREAD_Q, DIR>          \
-                    <<<grid, BLOCK, 0, stream>>>(                           \
+                    <<<grid, BLOCK, use_memory, stream>>>(                           \
                             listIndices.data().get(),                       \
                             prefixSumOffsets,                               \
                             topQueryToCentroid,                             \
